@@ -76,7 +76,7 @@ export function InviteUserForm() {
           <option value="admin">admin</option>
         </select>
       </div>
-      <Button type="submit">Запросити</Button>
+      <Button type="submit" className="w-full">Запросити</Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
@@ -142,10 +142,10 @@ export function UserEditForm({ profile }: { profile: Profile }) {
           active
         </label>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant="secondary">Зберегти</Button>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Button type="submit" variant="secondary" className="w-full">Зберегти</Button>
         {!isAdmin ? (
-          <Button type="button" variant="danger" onClick={onDelete}>
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
             Видалити
           </Button>
         ) : null}
@@ -198,12 +198,12 @@ export function RoomForm({ room }: { room?: Room }) {
           active
         </label>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" variant={room ? "secondary" : "primary"}>
+      <div className={room ? "grid gap-2 sm:grid-cols-2" : "grid gap-2"}>
+        <Button type="submit" variant={room ? "secondary" : "primary"} className="w-full">
           {room ? "Зберегти кімнату" : "Створити кімнату"}
         </Button>
         {room ? (
-          <Button type="button" variant="danger" onClick={onDelete}>
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
             Видалити
           </Button>
         ) : null}
@@ -235,6 +235,18 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
     });
   }
 
+  async function onDelete() {
+    if (!task || !window.confirm(`Видалити ${task.title}?`)) {
+      return;
+    }
+
+    await run(async () => {
+      await postJson("/api/admin/tasks/delete", {
+        id: task.id,
+      });
+    });
+  }
+
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <select className="h-10 rounded-md border px-3" name="roomId" defaultValue={task?.room_id ?? rooms[0]?.id} required>
@@ -250,9 +262,16 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
           active
         </label>
       </div>
-      <Button type="submit" variant={task ? "secondary" : "primary"}>
-        {task ? "Зберегти роботу" : "Створити роботу"}
-      </Button>
+      <div className={task ? "grid gap-2 sm:grid-cols-2" : "grid gap-2"}>
+        <Button type="submit" variant={task ? "secondary" : "primary"} className="w-full">
+          {task ? "Зберегти роботу" : "Створити роботу"}
+        </Button>
+        {task ? (
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
+            Видалити
+          </Button>
+        ) : null}
+      </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );

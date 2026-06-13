@@ -675,6 +675,51 @@ export async function upsertTask(params: {
   return id;
 }
 
+export async function removeTask(id: string) {
+  await loadTask(id);
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+
+    if (await taskHasHistory(id)) {
+      const { error } = await supabase.from("tasks").update({ is_active: false }).eq("id", id);
+      if (error) throw error;
+      return "deactivated" as const;
+    }
+
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) throw error;
+    return "deleted" as const;
+  }
+
+  if (await taskHasHistory(id)) {
+    getLocalDb()
+      .prepare("update tasks set is_active = 0, updated_at = ? where id = ?")
+      .run(nowIso(), id);
+    return "deactivated" as const;
+  }
+
+  getLocalDb().prepare("delete from tasks where id = ?").run(id);
+  return "deleted" as const;
+}
+
+async function taskHasHistory(id: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const checks = await supabase
+      .from("task_checks")
+      .select("id", { count: "exact", head: true })
+      .eq("task_id", id);
+    if (checks.error) throw checks.error;
+    return (checks.count ?? 0) > 0;
+  }
+
+  const count = getLocalDb()
+    .prepare("select count(*) as count from task_checks where task_id = ?")
+    .get(id) as { count: number };
+  return count.count > 0;
+}
+
 export async function loadDutyPeriod(id: string) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
