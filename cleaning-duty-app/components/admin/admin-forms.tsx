@@ -160,19 +160,31 @@ export function RoomForm({ room }: { room?: Room }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     await run(async () => {
       await postJson("/api/admin/rooms", {
         id: room?.id,
         name: String(form.get("name") ?? ""),
         description: String(form.get("description") ?? "") || null,
-        sortOrder: Number(form.get("sortOrder") ?? 0),
         isActive: form.get("isActive") === "on",
       });
       if (!room) {
-        event.currentTarget.reset();
+        formElement.reset();
       }
+    });
+  }
+
+  async function onDelete() {
+    if (!room || !window.confirm(`Видалити ${room.name}?`)) {
+      return;
+    }
+
+    await run(async () => {
+      await postJson("/api/admin/rooms/delete", {
+        id: room.id,
+      });
     });
   }
 
@@ -180,16 +192,22 @@ export function RoomForm({ room }: { room?: Room }) {
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <input className="h-10 rounded-md border px-3" name="name" placeholder="Назва кімнати" defaultValue={room?.name ?? ""} required />
       <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={room?.description ?? ""} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input className="h-10 rounded-md border px-3" name="sortOrder" defaultValue={room?.sort_order ?? 0} type="number" />
+      <div className="grid gap-3">
         <label className="flex items-center gap-2 text-sm">
           <input name="isActive" type="checkbox" defaultChecked={room?.is_active ?? true} />
           active
         </label>
       </div>
-      <Button type="submit" variant={room ? "secondary" : "primary"}>
-        {room ? "Зберегти кімнату" : "Створити кімнату"}
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant={room ? "secondary" : "primary"}>
+          {room ? "Зберегти кімнату" : "Створити кімнату"}
+        </Button>
+        {room ? (
+          <Button type="button" variant="danger" onClick={onDelete}>
+            Видалити
+          </Button>
+        ) : null}
+      </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
@@ -200,7 +218,8 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     await run(async () => {
       await postJson("/api/admin/tasks", {
@@ -208,11 +227,10 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
         roomId: String(form.get("roomId") ?? ""),
         title: String(form.get("title") ?? ""),
         description: String(form.get("description") ?? "") || null,
-        sortOrder: Number(form.get("sortOrder") ?? 0),
         isActive: form.get("isActive") === "on",
       });
       if (!task) {
-        event.currentTarget.reset();
+        formElement.reset();
       }
     });
   }
@@ -226,8 +244,7 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
       </select>
       <input className="h-10 rounded-md border px-3" name="title" placeholder="Назва роботи" defaultValue={task?.title ?? ""} required />
       <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={task?.description ?? ""} />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <input className="h-10 rounded-md border px-3" name="sortOrder" defaultValue={task?.sort_order ?? 0} type="number" />
+      <div className="grid gap-3">
         <label className="flex items-center gap-2 text-sm">
           <input name="isActive" type="checkbox" defaultChecked={task?.is_active ?? true} />
           active

@@ -409,13 +409,59 @@ export async function listRooms(options: { activeOnly?: boolean } = {}) {
     .map((row) => asRoom(row as Record<string, unknown>));
 }
 
+async function loadRoom(id: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase.from("rooms").select("*").eq("id", id).single();
+    if (error) throw error;
+    return data as Room;
+  }
+
+  const row = getLocalDb().prepare("select * from rooms where id = ?").get(id);
+  if (!row) throw new Error("Room not found");
+  return asRoom(row as Record<string, unknown>);
+}
+
+async function nextRoomSortOrder() {
+  const rooms = await listRooms();
+  const maxSortOrder = rooms.reduce(
+    (max, room) => Math.max(max, Number(room.sort_order) || 0),
+    0,
+  );
+  return maxSortOrder + 10;
+}
+
+async function deactivateRoomTasks(roomId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase
+      .from("tasks")
+      .update({ is_active: false })
+      .eq("room_id", roomId);
+    if (error) throw error;
+    return;
+  }
+
+  getLocalDb()
+    .prepare("update tasks set is_active = 0, updated_at = ? where room_id = ?")
+    .run(nowIso(), roomId);
+}
+
 export async function upsertRoom(params: {
   id?: string;
   name: string;
   description: string | null;
-  sortOrder: number;
+  sortOrder?: number | null;
   isActive: boolean;
 }) {
+  const sortOrder =
+    params.sortOrder ??
+    (params.id ? (await loadRoom(params.id)).sort_order : await nextRoomSortOrder());
+
+  if (!Number.isInteger(sortOrder) || sortOrder < 1) {
+    throw badRequest("Room order must be a positive number starting from 1");
+  }
+
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { data, error } = await supabase
@@ -424,12 +470,17 @@ export async function upsertRoom(params: {
         ...(params.id ? { id: params.id } : {}),
         name: params.name,
         description: params.description,
-        sort_order: params.sortOrder,
+        sort_order: sortOrder,
         is_active: params.isActive,
       })
       .select("id")
       .single();
     if (error) throw error;
+
+    if (!params.isActive) {
+      await deactivateRoomTasks(data.id as string);
+    }
+
     return data.id as string;
   }
 
@@ -445,8 +496,82 @@ export async function upsertRoom(params: {
          is_active = excluded.is_active,
          updated_at = excluded.updated_at`,
     )
-    .run(id, params.name, params.description, params.sortOrder, params.isActive ? 1 : 0, nowIso());
+    .run(id, params.name, params.description, sortOrder, params.isActive ? 1 : 0, nowIso());
+
+  if (!params.isActive) {
+    await deactivateRoomTasks(id);
+  }
+
   return id;
+}
+
+export async function removeRoom(id: string) {
+  await loadRoom(id);
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+
+    if (await roomHasHistory(id)) {
+      const { error } = await supabase.from("rooms").update({ is_active: false }).eq("id", id);
+      if (error) throw error;
+      await deactivateRoomTasks(id);
+      return "deactivated" as const;
+    }
+
+    const { error } = await supabase.from("rooms").delete().eq("id", id);
+    if (error) throw error;
+    return "deleted" as const;
+  }
+
+  if (await roomHasHistory(id)) {
+    getLocalDb()
+      .prepare("update rooms set is_active = 0, updated_at = ? where id = ?")
+      .run(nowIso(), id);
+    await deactivateRoomTasks(id);
+    return "deactivated" as const;
+  }
+
+  getLocalDb().prepare("delete from rooms where id = ?").run(id);
+  return "deleted" as const;
+}
+
+async function roomHasHistory(id: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const roomAcceptances = await supabase
+      .from("room_acceptances")
+      .select("id", { count: "exact", head: true })
+      .eq("room_id", id);
+    if (roomAcceptances.error) throw roomAcceptances.error;
+    if ((roomAcceptances.count ?? 0) > 0) return true;
+
+    const tasks = await supabase.from("tasks").select("id").eq("room_id", id);
+    if (tasks.error) throw tasks.error;
+    const taskIds = (tasks.data ?? []).map((task) => task.id as string);
+    if (taskIds.length === 0) return false;
+
+    const taskChecks = await supabase
+      .from("task_checks")
+      .select("id", { count: "exact", head: true })
+      .in("task_id", taskIds);
+    if (taskChecks.error) throw taskChecks.error;
+    return (taskChecks.count ?? 0) > 0;
+  }
+
+  const db = getLocalDb();
+  const roomCount = db
+    .prepare("select count(*) as count from room_acceptances where room_id = ?")
+    .get(id) as { count: number };
+  if (roomCount.count > 0) return true;
+
+  const taskCount = db
+    .prepare(
+      `select count(*) as count
+       from task_checks
+       where task_id in (select id from tasks where room_id = ?)`,
+    )
+    .get(id) as { count: number };
+  return taskCount.count > 0;
 }
 
 export async function listTasks(options: { activeOnly?: boolean } = {}) {
@@ -467,14 +592,46 @@ export async function listTasks(options: { activeOnly?: boolean } = {}) {
     .map((row) => asTask(row as Record<string, unknown>));
 }
 
+async function loadTask(id: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase.from("tasks").select("*").eq("id", id).single();
+    if (error) throw error;
+    return data as Task;
+  }
+
+  const row = getLocalDb().prepare("select * from tasks where id = ?").get(id);
+  if (!row) throw new Error("Task not found");
+  return asTask(row as Record<string, unknown>);
+}
+
+async function nextTaskSortOrder(roomId: string) {
+  const tasks = await listTasks();
+  const maxSortOrder = tasks
+    .filter((task) => task.room_id === roomId)
+    .reduce((max, task) => Math.max(max, Number(task.sort_order) || 0), 0);
+  return maxSortOrder + 10;
+}
+
 export async function upsertTask(params: {
   id?: string;
   roomId: string;
   title: string;
   description: string | null;
-  sortOrder: number;
+  sortOrder?: number | null;
   isActive: boolean;
 }) {
+  const existingTask = params.id ? await loadTask(params.id) : null;
+  const sortOrder =
+    params.sortOrder ??
+    (existingTask && existingTask.room_id === params.roomId
+      ? existingTask.sort_order
+      : await nextTaskSortOrder(params.roomId));
+
+  if (!Number.isInteger(sortOrder) || sortOrder < 1) {
+    throw badRequest("Task order must be a positive number starting from 1");
+  }
+
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { data, error } = await supabase
@@ -484,7 +641,7 @@ export async function upsertTask(params: {
         room_id: params.roomId,
         title: params.title,
         description: params.description,
-        sort_order: params.sortOrder,
+        sort_order: sortOrder,
         is_active: params.isActive,
       })
       .select("id")
@@ -511,7 +668,7 @@ export async function upsertTask(params: {
       params.roomId,
       params.title,
       params.description,
-      params.sortOrder,
+      sortOrder,
       params.isActive ? 1 : 0,
       nowIso(),
     );

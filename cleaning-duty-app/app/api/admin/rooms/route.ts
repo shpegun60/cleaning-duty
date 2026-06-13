@@ -5,10 +5,10 @@ import { upsertRoom, writeAuditLog } from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const RoomSchema = z.object({
-  id: z.string().uuid().optional(),
+  id: z.string().min(1).optional(),
   name: z.string().trim().min(2),
   description: z.string().trim().nullable(),
-  sortOrder: z.number().int(),
+  sortOrder: z.number().int().min(1).nullable().optional(),
   isActive: z.boolean(),
 });
 
