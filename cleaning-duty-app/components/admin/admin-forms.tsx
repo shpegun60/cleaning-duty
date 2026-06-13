@@ -279,36 +279,168 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
 
 export function RotationForm({ profiles }: { profiles: Profile[] }) {
   const { message, run } = useApiForm();
+  const profileKey = rotationProfileKey(profiles);
+  const [rotationState, setRotationState] = useState(() => ({
+    profileKey,
+    items: buildRotationItems(profiles),
+  }));
+  const items =
+    rotationState.profileKey === profileKey
+      ? rotationState.items
+      : buildRotationItems(profiles);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
 
     await run(async () => {
       await postJson("/api/admin/reorder-rotation", {
-        items: profiles.map((profile) => ({
-          userId: profile.id,
-          rotationOrder: intOrNull(form.get(profile.id)),
+        items: items.map((item) => ({
+          userId: item.profile.id,
+          rotationOrder: item.rotationOrder,
         })),
       });
     });
   }
 
+  function moveProfileToOrder(userId: string, value: string) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) return;
+
+    updateRotationItems(profileKey, profiles, setRotationState, (current) => {
+      const fromIndex = current.findIndex((item) => item.profile.id === userId);
+      if (fromIndex < 0) return current;
+
+      const targetIndex = Math.min(Math.max(parsed, 1), current.length) - 1;
+      if (fromIndex === targetIndex) return current;
+
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return renumberRotationItems(next);
+    });
+  }
+
+  function onDragOver(targetId: string) {
+    if (!draggedId || draggedId === targetId) return;
+
+    updateRotationItems(profileKey, profiles, setRotationState, (current) => {
+      const fromIndex = current.findIndex((item) => item.profile.id === draggedId);
+      const toIndex = current.findIndex((item) => item.profile.id === targetId);
+      if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return current;
+
+      const next = [...current];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return renumberRotationItems(next);
+    });
+  }
+
   return (
     <form onSubmit={onSubmit} className="grid gap-3">
-      {profiles.map((profile) => (
-        <label key={profile.id} className="grid grid-cols-[1fr_120px] items-center gap-3 rounded-md border border-stone-200 bg-white p-4">
-          <span>
-            <span className="block font-semibold">{profile.full_name}</span>
-            <span className="text-sm text-stone-600">{profile.email}</span>
+      {items.map((item) => (
+        <div
+          key={item.profile.id}
+          draggable
+          onDragStart={() => setDraggedId(item.profile.id)}
+          onDragOver={(event) => {
+            event.preventDefault();
+            onDragOver(item.profile.id);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDraggedId(null);
+          }}
+          onDragEnd={() => setDraggedId(null)}
+          className={`grid grid-cols-[40px_1fr_96px] items-center gap-3 rounded-md border bg-white p-4 transition ${
+            draggedId === item.profile.id ? "border-emerald-500 opacity-60" : "border-stone-200"
+          }`}
+        >
+          <span
+            className="flex h-10 cursor-grab items-center justify-center rounded-md border border-stone-300 bg-stone-50 text-stone-600 active:cursor-grabbing"
+            aria-label="Перетягнути"
+            title="Перетягнути"
+          >
+            ↕
           </span>
-          <input className="h-10 rounded-md border px-3" name={profile.id} defaultValue={profile.rotation_order ?? ""} type="number" min={1} />
-        </label>
+          <span>
+            <span className="block font-semibold">{item.profile.full_name}</span>
+            <span className="text-sm text-stone-600">{item.profile.email}</span>
+          </span>
+          <input
+            className="h-10 rounded-md border px-3"
+            value={item.rotationOrder}
+            type="number"
+            min={1}
+            max={items.length}
+            onChange={(event) => moveProfileToOrder(item.profile.id, event.currentTarget.value)}
+          />
+        </div>
       ))}
-      <Button type="submit">Зберегти порядок</Button>
+      <Button type="submit" className="w-full">Зберегти порядок</Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
+}
+
+function buildRotationItems(profiles: Profile[]) {
+  const sorted = [...profiles].sort((a, b) => {
+    const aOrder = a.rotation_order ?? Number.POSITIVE_INFINITY;
+    const bOrder = b.rotation_order ?? Number.POSITIVE_INFINITY;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return a.full_name.localeCompare(b.full_name);
+  });
+
+  return renumberRotationItems(
+    sorted.map((profile, index) => ({
+      profile,
+      rotationOrder: index + 1,
+    })),
+  );
+}
+
+function rotationProfileKey(profiles: Profile[]) {
+  return profiles
+    .map((profile) =>
+      `${profile.id}:${profile.email}:${profile.full_name}:${profile.rotation_order ?? ""}`,
+    )
+    .sort()
+    .join("|");
+}
+
+function updateRotationItems(
+  profileKey: string,
+  profiles: Profile[],
+  setRotationState: (
+    updater: (current: {
+      profileKey: string;
+      items: Array<{ profile: Profile; rotationOrder: number }>;
+    }) => {
+      profileKey: string;
+      items: Array<{ profile: Profile; rotationOrder: number }>;
+    },
+  ) => void,
+  updater: (
+    current: Array<{ profile: Profile; rotationOrder: number }>,
+  ) => Array<{ profile: Profile; rotationOrder: number }>,
+) {
+  setRotationState((current) => {
+    const currentItems =
+      current.profileKey === profileKey ? current.items : buildRotationItems(profiles);
+    return {
+      profileKey,
+      items: updater(currentItems),
+    };
+  });
+}
+
+function renumberRotationItems(
+  items: Array<{ profile: Profile; rotationOrder: number }>,
+) {
+  return items.map((item, index) => ({
+    ...item,
+    rotationOrder: index + 1,
+  }));
 }
 
 export function ScheduleTools({

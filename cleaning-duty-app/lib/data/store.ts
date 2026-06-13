@@ -207,6 +207,87 @@ export function getNextRotationUser(users: Profile[], currentAssigneeId: string)
   return users[currentIndex < 0 ? 0 : (currentIndex + 1) % users.length];
 }
 
+export async function reorderActiveWorkerRotation(
+  items: Array<{ userId: string; rotationOrder: number }>,
+) {
+  const activeWorkers = (await listProfiles()).filter(
+    (profile) => profile.role === "worker" && profile.is_active,
+  );
+  const activeWorkerIds = new Set(activeWorkers.map((profile) => profile.id));
+  const itemIds = new Set<string>();
+
+  for (const item of items) {
+    if (itemIds.has(item.userId)) {
+      throw badRequest("Rotation users must be unique");
+    }
+    itemIds.add(item.userId);
+
+    if (!activeWorkerIds.has(item.userId)) {
+      throw badRequest("Rotation can include only active workers");
+    }
+
+    if (!Number.isInteger(item.rotationOrder) || item.rotationOrder < 1) {
+      throw badRequest("Rotation order must be a positive number starting from 1");
+    }
+  }
+
+  for (const worker of activeWorkers) {
+    if (!itemIds.has(worker.id)) {
+      throw badRequest("Rotation must include every active worker");
+    }
+  }
+
+  const normalizedItems = [...items]
+    .sort((a, b) => a.rotationOrder - b.rotationOrder)
+    .map((item, index) => ({
+      userId: item.userId,
+      rotationOrder: index + 1,
+    }));
+  const now = nowIso();
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const ids = activeWorkers.map((profile) => profile.id);
+    const { error: clearError } = await supabase
+      .from("profiles")
+      .update({ rotation_order: null })
+      .in("id", ids);
+    if (clearError) throw clearError;
+
+    for (const item of normalizedItems) {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ rotation_order: item.rotationOrder })
+        .eq("id", item.userId);
+      if (error) throw error;
+    }
+
+    return normalizedItems;
+  }
+
+  const db = getLocalDb();
+  db.exec("begin");
+  try {
+    db.prepare(
+      "update profiles set rotation_order = null, updated_at = ? where role = 'worker' and is_active = 1",
+    ).run(now);
+    const update = db.prepare(
+      "update profiles set rotation_order = ?, updated_at = ? where id = ?",
+    );
+
+    for (const item of normalizedItems) {
+      update.run(item.rotationOrder, now, item.userId);
+    }
+
+    db.exec("commit");
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+
+  return normalizedItems;
+}
+
 export async function loadProfile(id: string) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();

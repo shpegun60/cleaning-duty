@@ -13,7 +13,7 @@ export default async function AdminRotationPage() {
     <div className="grid gap-6">
       <div>
         <h1 className="text-2xl font-bold">Порядок чергування</h1>
-        <p className="mt-1 text-stone-600">MVP використовує прості numeric rotation_order inputs.</p>
+        <p className="mt-1 text-stone-600">Перетягуй людей або введи номер позиції, потім збережи порядок.</p>
       </div>
       <RotationForm profiles={profiles as Profile[]} />
     </div>
