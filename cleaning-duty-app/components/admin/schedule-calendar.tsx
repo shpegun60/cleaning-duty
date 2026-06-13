@@ -4,7 +4,9 @@ import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  addDays,
   addMonths,
+  differenceInCalendarDays,
   eachDayOfInterval,
   endOfMonth,
   endOfWeek,
@@ -64,11 +66,17 @@ export function ScheduleCalendar({
   duties,
   profiles,
   month,
+  viewStart,
+  viewEnd,
+  isCustomRange,
   changes,
 }: {
   duties: DutyPeriod[];
   profiles: Profile[];
   month: string;
+  viewStart: string;
+  viewEnd: string;
+  isCustomRange: boolean;
   changes: AssigneeChange[];
 }) {
   const router = useRouter();
@@ -78,8 +86,14 @@ export function ScheduleCalendar({
   const monthDate = parseISO(`${month}-01`);
   const monthStart = startOfMonth(monthDate);
   const monthEnd = endOfMonth(monthDate);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const viewStartDate = parseISO(viewStart);
+  const viewEndDate = parseISO(viewEnd);
+  const gridStart = isCustomRange
+    ? startOfWeek(viewStartDate, { weekStartsOn: 1 })
+    : startOfWeek(monthStart, { weekStartsOn: 1 });
+  const gridEnd = isCustomRange
+    ? endOfWeek(viewEndDate, { weekStartsOn: 1 })
+    : endOfWeek(monthEnd, { weekStartsOn: 1 });
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
   const profileMap = useMemo(
     () => new Map(profiles.map((profile) => [profile.id, profile])),
@@ -122,10 +136,27 @@ export function ScheduleCalendar({
     return map;
   }, [changes]);
   const changedDutyIds = new Set(changes.map((change) => change.duty_period_id));
+  const scheduledHandovers = useMemo(
+    () =>
+      duties
+        .filter(
+          (duty) =>
+            duty.week_end >= viewStart &&
+            duty.week_end <= viewEnd &&
+            !["cancelled", "force_closed"].includes(duty.status),
+        )
+        .sort((a, b) => a.week_end.localeCompare(b.week_end))
+        .map((duty) => ({
+          duty,
+          nextAssigneeId: nextDutyById.get(duty.id)?.assignee_id ?? duty.next_assignee_id,
+        })),
+    [duties, nextDutyById, viewEnd, viewStart],
+  );
   const previousMonth = format(addMonths(monthDate, -1), "yyyy-MM");
   const nextMonth = format(addMonths(monthDate, 1), "yyyy-MM");
   const currentMonth = format(new Date(), "yyyy-MM");
   const todayKey = format(new Date(), "yyyy-MM-dd");
+  const rangeLengthDays = differenceInCalendarDays(viewEndDate, viewStartDate) + 1;
   const editingDuty = editingDutyId ? dutyMap.get(editingDutyId) ?? null : null;
   const defaultNewAssigneeId =
     activeRotationWorkers.find((profile) => profile.id !== editingDuty?.assignee_id)?.id ?? "";
@@ -148,12 +179,40 @@ export function ScheduleCalendar({
     router.push(`/admin/schedule?month=${targetMonth}`, { scroll: false });
   }
 
+  function goToRange(startDate: string, endDate: string) {
+    router.push(`/admin/schedule?start=${startDate}&end=${endDate}`, { scroll: false });
+  }
+
   function chooseMonth(event: FormEvent<HTMLInputElement>) {
     const targetMonth = event.currentTarget.value;
 
     if (/^\d{4}-\d{2}$/.test(targetMonth)) {
       goToMonth(targetMonth);
     }
+  }
+
+  function chooseRange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const startDate = String(form.get("startDate") ?? "");
+    const endDate = String(form.get("endDate") ?? "");
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      goToRange(startDate, endDate);
+    }
+  }
+
+  function shiftVisibleRange(direction: -1 | 1) {
+    if (!isCustomRange) {
+      goToMonth(direction < 0 ? previousMonth : nextMonth);
+      return;
+    }
+
+    const offset = direction * rangeLengthDays;
+    goToRange(
+      format(addDays(viewStartDate, offset), "yyyy-MM-dd"),
+      format(addDays(viewEndDate, offset), "yyyy-MM-dd"),
+    );
   }
 
   async function changeAssignee(event: FormEvent<HTMLFormElement>) {
@@ -197,18 +256,20 @@ export function ScheduleCalendar({
             <button
               type="button"
               className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
-              onClick={() => goToMonth(previousMonth)}
+              onClick={() => shiftVisibleRange(-1)}
               aria-label="Попередній місяць"
             >
               ‹
             </button>
             <span className="min-w-40 text-center font-semibold">
-              {monthLabels[monthDate.getMonth()]} {format(monthDate, "yyyy")}
+              {isCustomRange
+                ? `${viewStart} - ${viewEnd}`
+                : `${monthLabels[monthDate.getMonth()]} ${format(monthDate, "yyyy")}`}
             </span>
             <button
               type="button"
               className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
-              onClick={() => goToMonth(nextMonth)}
+              onClick={() => shiftVisibleRange(1)}
               aria-label="Наступний місяць"
             >
               ›
@@ -226,11 +287,33 @@ export function ScheduleCalendar({
               type="button"
               className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
               onClick={() => goToMonth(currentMonth)}
-              disabled={month === currentMonth}
+              disabled={!isCustomRange && month === currentMonth}
             >
               Сьогодні
             </button>
           </div>
+          <form onSubmit={chooseRange} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <input
+              aria-label="Початок діапазону"
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"
+              name="startDate"
+              type="date"
+              defaultValue={isCustomRange ? viewStart : format(monthStart, "yyyy-MM-dd")}
+            />
+            <input
+              aria-label="Кінець діапазону"
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"
+              name="endDate"
+              type="date"
+              defaultValue={isCustomRange ? viewEnd : format(monthEnd, "yyyy-MM-dd")}
+            />
+            <button
+              type="submit"
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold hover:bg-stone-100"
+            >
+              Діапазон
+            </button>
+          </form>
         </div>
       </div>
 
@@ -252,7 +335,7 @@ export function ScheduleCalendar({
             const nextAssigneeId = nextDuty?.assignee_id ?? duty?.next_assignee_id ?? null;
             const nextAssignee = nextAssigneeId ? profileMap.get(nextAssigneeId) : null;
             const assignee = duty ? profileMap.get(duty.assignee_id) : null;
-            const isCurrentMonth = day >= monthStart && day <= monthEnd;
+            const isInViewRange = day >= viewStartDate && day <= viewEndDate;
             const isHandoverDay = duty?.week_end === dateKey;
             const isChanged = duty ? changedDutyIds.has(duty.id) : false;
             const style = duty
@@ -265,7 +348,7 @@ export function ScheduleCalendar({
               <div
                 key={dateKey}
                 className={`min-h-36 border-b border-r border-stone-200 p-2 ${
-                  isCurrentMonth ? "bg-white" : "bg-stone-50 text-stone-400"
+                  isInViewRange ? "bg-white" : "bg-stone-50 text-stone-400"
                 } ${dateKey === todayKey ? "ring-2 ring-emerald-600 ring-inset" : ""}`}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -323,6 +406,11 @@ export function ScheduleCalendar({
           })}
         </div>
       </div>
+
+      <ScheduledHandoversTable
+        handovers={scheduledHandovers}
+        profileMap={profileMap}
+      />
 
       <AssigneeChangesTable
         changes={changes}
@@ -391,6 +479,67 @@ export function ScheduleCalendar({
         </div>
       ) : null}
     </section>
+  );
+}
+
+function ScheduledHandoversTable({
+  handovers,
+  profileMap,
+}: {
+  handovers: Array<{ duty: DutyPeriod; nextAssigneeId: string | null }>;
+  profileMap: Map<string, Profile>;
+}) {
+  return (
+    <div className="mt-4 rounded-md border border-amber-200">
+      <div className="border-b border-amber-200 bg-amber-50 px-3 py-2">
+        <h3 className="font-semibold text-amber-950">Заплановані передачі</h3>
+      </div>
+      <div className="grid gap-2 p-3">
+        {handovers.map(({ duty, nextAssigneeId }) => {
+          const assignee = profileMap.get(duty.assignee_id);
+          const nextAssignee = nextAssigneeId ? profileMap.get(nextAssigneeId) : null;
+
+          return (
+            <div
+              key={duty.id}
+              className="grid gap-2 rounded-md border border-stone-100 p-3 md:grid-cols-[0.8fr_1fr_1fr_auto]"
+            >
+              <span>
+                <span className="block text-xs font-medium uppercase text-stone-500">
+                  Дата передачі
+                </span>
+                <span className="block font-semibold">{duty.week_end}</span>
+              </span>
+              <span>
+                <span className="block text-xs font-medium uppercase text-stone-500">
+                  Передає
+                </span>
+                <span className="block">{assignee?.full_name ?? duty.assignee_id}</span>
+              </span>
+              <span>
+                <span className="block text-xs font-medium uppercase text-stone-500">
+                  Приймає
+                </span>
+                <span className="block">
+                  {nextAssignee?.full_name ?? nextAssigneeId ?? "Не задано"}
+                </span>
+              </span>
+              <Link
+                className="rounded-md border border-stone-300 bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-stone-100"
+                href={`/handover/${duty.id}`}
+              >
+                Відкрити
+              </Link>
+            </div>
+          );
+        })}
+        {handovers.length === 0 ? (
+          <p className="text-sm text-stone-600">
+            У видимому діапазоні немає запланованих передач.
+          </p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

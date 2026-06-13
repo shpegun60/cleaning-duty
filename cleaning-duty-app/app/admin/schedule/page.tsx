@@ -8,8 +8,7 @@ import {
   listProfiles,
 } from "@/lib/data/store";
 import {
-  normalizeScheduleMonth,
-  scheduleCalendarRange,
+  scheduleViewRange,
 } from "@/lib/domain/schedule-calendar";
 import type {
   AppSettings,
@@ -24,11 +23,18 @@ export const dynamic = "force-dynamic";
 export default async function AdminSchedulePage({
   searchParams,
 }: {
-  searchParams?: Promise<{ month?: string | string[] }>;
+  searchParams?: Promise<{
+    month?: string | string[];
+    start?: string | string[];
+    end?: string | string[];
+  }>;
 }) {
   const params = await searchParams;
-  const month = normalizeScheduleMonth(params?.month);
-  const range = scheduleCalendarRange(month);
+  const range = scheduleViewRange({
+    month: params?.month,
+    start: params?.start,
+    end: params?.end,
+  });
   const [calendarDutyList, profileList, notificationList, settings] =
     (await Promise.all([
       listDutiesInRange(range.gridStart, range.gridEnd),
@@ -57,7 +63,10 @@ export default async function AdminSchedulePage({
       <ScheduleCalendar
         duties={calendarDutyList}
         profiles={profileList}
-        month={month}
+        month={range.month}
+        viewStart={range.start ?? range.gridStart}
+        viewEnd={range.end ?? range.gridEnd}
+        isCustomRange={range.mode === "range"}
         changes={activeChanges}
       />
     </div>

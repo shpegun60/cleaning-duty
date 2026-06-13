@@ -1064,6 +1064,58 @@ export async function listDuties(limit = 52, descending = true) {
     .map((row) => asDuty(row as Record<string, unknown>));
 }
 
+export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8) {
+  if (!isLocalBackend()) {
+    const upcoming = await sbList<DutyPeriod>((supabase) =>
+      supabase
+        .from("duty_periods")
+        .select("*")
+        .neq("status", "cancelled")
+        .gte("week_end", localDate)
+        .order("week_start", { ascending: true })
+        .limit(limit),
+    );
+
+    if (upcoming.length > 0) {
+      return upcoming;
+    }
+
+    return sbList<DutyPeriod>((supabase) =>
+      supabase
+        .from("duty_periods")
+        .select("*")
+        .neq("status", "cancelled")
+        .order("week_start", { ascending: false })
+        .limit(limit),
+    );
+  }
+
+  const upcoming = getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status <> 'cancelled'
+         and week_end >= ?
+       order by week_start asc
+       limit ?`,
+    )
+    .all(localDate, limit)
+    .map((row) => asDuty(row as Record<string, unknown>));
+
+  if (upcoming.length > 0) {
+    return upcoming;
+  }
+
+  return getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status <> 'cancelled'
+       order by week_start desc
+       limit ?`,
+    )
+    .all(limit)
+    .map((row) => asDuty(row as Record<string, unknown>));
+}
+
 export async function listDutiesInRange(startDate: string, endDate: string) {
   if (!isLocalBackend()) {
     return sbList<DutyPeriod>((supabase) =>
