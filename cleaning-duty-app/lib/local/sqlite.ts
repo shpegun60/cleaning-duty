@@ -113,6 +113,23 @@ function initializeLocalDb(db: DatabaseSync) {
       unique (duty_period_id, room_id)
     );
 
+    create table if not exists assignee_changes (
+      id text primary key,
+      duty_period_id text not null references duty_periods(id) on delete cascade,
+      previous_assignee_id text not null references profiles(id),
+      new_assignee_id text not null references profiles(id),
+      previous_next_assignee_id text references profiles(id),
+      new_next_assignee_id text references profiles(id),
+      reason text not null,
+      created_by text not null references profiles(id),
+      reverted_at text,
+      reverted_by text references profiles(id),
+      created_at text not null default current_timestamp
+    );
+
+    create index if not exists idx_local_assignee_changes_duty_active
+    on assignee_changes(duty_period_id, reverted_at, created_at);
+
     create table if not exists notifications (
       id text primary key,
       duty_period_id text references duty_periods(id) on delete cascade,

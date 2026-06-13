@@ -8,8 +8,8 @@ import {
   loadProfile,
   markNotificationFailed,
   markNotificationSent,
+  recordAssigneeChange,
   resolveNextAssignee,
-  updateDutyPeriod,
   writeAuditLog,
 } from "@/lib/data/store";
 import { adminChangedAssigneeTemplate } from "@/lib/email/templates";
@@ -34,6 +34,10 @@ export async function POST(request: Request) {
 
     const newAssignee = await loadProfile(body.newAssigneeId);
 
+    if (newAssignee.id === duty.assignee_id) {
+      throw conflict("New assignee is already assigned to this duty");
+    }
+
     if (
       newAssignee.role !== "worker" ||
       !newAssignee.is_active ||
@@ -44,9 +48,12 @@ export async function POST(request: Request) {
     }
 
     const nextAssignee = await resolveNextAssignee(newAssignee.id);
-    await updateDutyPeriod(duty.id, {
-      assignee_id: newAssignee.id,
-      next_assignee_id: nextAssignee.id,
+    const change = await recordAssigneeChange({
+      duty,
+      newAssigneeId: newAssignee.id,
+      newNextAssigneeId: nextAssignee.id,
+      reason: body.reason,
+      adminId: admin.id,
     });
 
     const notification = await createNotificationIfMissing({
@@ -78,6 +85,7 @@ export async function POST(request: Request) {
         previousAssigneeId: duty.assignee_id,
         newAssigneeId: newAssignee.id,
         nextAssigneeId: nextAssignee.id,
+        assigneeChangeId: change.id,
         reason: body.reason,
       },
     });

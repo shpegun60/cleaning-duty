@@ -15,6 +15,7 @@ import { badRequest, conflict, handleRouteError } from "@/lib/http";
 
 const RegenerateScheduleSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   periods: z.number().int().min(1).max(52).optional(),
   startWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   weeks: z.number().int().min(1).max(52).optional(),
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     const body = RegenerateScheduleSchema.parse(await request.json());
     const settings = await getAppSettings();
     const startDate = body.startDate ?? body.startWeek;
-    const periods = body.periods ?? body.weeks ?? settings.future_schedule_weeks;
+    const requestedPeriods = body.periods ?? body.weeks ?? settings.future_schedule_weeks;
 
     const users = await listActiveRotationProfiles();
 
@@ -38,6 +39,10 @@ export async function POST(request: Request) {
       throw badRequest("Start date is required");
     }
 
+    if (body.endDate && body.endDate < startDate) {
+      throw badRequest("End date must be on or after start date");
+    }
+
     const previousDuty = await previousDutyBefore(startDate);
     await deleteFutureScheduledDuties(startDate);
 
@@ -46,13 +51,18 @@ export async function POST(request: Request) {
       : users[0];
     const rows = [];
     let periodStart = startDate;
+    let index = 0;
 
-    for (let index = 0; index < periods; index += 1) {
-      const periodEnd = periodEndFromStart(
+    while (body.endDate ? periodStart <= body.endDate : index < requestedPeriods) {
+      const calculatedPeriodEnd = periodEndFromStart(
         periodStart,
         settings.rotation_period_unit,
         settings.rotation_period_count,
       );
+      const periodEnd =
+        body.endDate && calculatedPeriodEnd > body.endDate
+          ? body.endDate
+          : calculatedPeriodEnd;
       const nextAssignee = getNextRotationUser(users, assignee.id);
 
       rows.push({
@@ -66,6 +76,11 @@ export async function POST(request: Request) {
 
       assignee = nextAssignee;
       periodStart = addDaysToDateKey(periodEnd, 1);
+      index += 1;
+
+      if (index > 1000) {
+        throw badRequest("Date range creates too many duty periods");
+      }
     }
 
     for (const row of rows) {
@@ -85,7 +100,8 @@ export async function POST(request: Request) {
       entityType: "duty_period",
       payload: {
         startDate,
-        periods,
+        endDate: body.endDate ?? null,
+        periods: rows.length,
         rotationPeriodUnit: settings.rotation_period_unit,
         rotationPeriodCount: settings.rotation_period_count,
       },

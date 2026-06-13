@@ -1,17 +1,23 @@
 import { ScheduleTools } from "@/components/admin/admin-forms";
-import {
-  normalizeScheduleMonth,
-  ScheduleCalendar,
-  scheduleCalendarRange,
-} from "@/components/admin/schedule-calendar";
+import { ScheduleCalendar } from "@/components/admin/schedule-calendar";
 import {
   getAppSettings,
-  listDuties,
+  listActiveAssigneeChangesForDuties,
   listDutiesInRange,
   listFailedNotifications,
   listProfiles,
 } from "@/lib/data/store";
-import type { AppSettings, DutyPeriod, Notification, Profile } from "@/lib/types";
+import {
+  normalizeScheduleMonth,
+  scheduleCalendarRange,
+} from "@/lib/domain/schedule-calendar";
+import type {
+  AppSettings,
+  AssigneeChange,
+  DutyPeriod,
+  Notification,
+  Profile,
+} from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -23,17 +29,16 @@ export default async function AdminSchedulePage({
   const params = await searchParams;
   const month = normalizeScheduleMonth(params?.month);
   const range = scheduleCalendarRange(month);
-  const [toolDutyList, calendarDutyList, profileList, notificationList, settings] =
+  const [calendarDutyList, profileList, notificationList, settings] =
     (await Promise.all([
-      listDuties(52),
       listDutiesInRange(range.gridStart, range.gridEnd),
       listProfiles(),
       listFailedNotifications(),
       getAppSettings(),
-    ])) as [DutyPeriod[], DutyPeriod[], Profile[], Notification[], AppSettings];
-  const actionableDuties = toolDutyList.filter(
-    (duty) => !["accepted", "cancelled", "force_closed"].includes(duty.status),
-  );
+    ])) as [DutyPeriod[], Profile[], Notification[], AppSettings];
+  const activeChanges = (await listActiveAssigneeChangesForDuties(
+    calendarDutyList.map((duty) => duty.id),
+  )) as AssigneeChange[];
 
   return (
     <div className="grid gap-6">
@@ -45,12 +50,16 @@ export default async function AdminSchedulePage({
         </p>
       </div>
       <ScheduleTools
-        duties={actionableDuties}
         failedNotifications={notificationList}
         profiles={profileList}
         settings={settings}
       />
-      <ScheduleCalendar duties={calendarDutyList} profiles={profileList} month={month} />
+      <ScheduleCalendar
+        duties={calendarDutyList}
+        profiles={profileList}
+        month={month}
+        changes={activeChanges}
+      />
     </div>
   );
 }

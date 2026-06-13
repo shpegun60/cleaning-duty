@@ -8,6 +8,7 @@ import { getLocalDb, mapBooleanFields, nowIso } from "@/lib/local/sqlite";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type {
   AppSettings,
+  AssigneeChange,
   DutyPeriod,
   Notification,
   NotificationType,
@@ -52,6 +53,14 @@ function asTaskCheck(row: Record<string, unknown>) {
 
 function asDuty(row: Record<string, unknown>) {
   return { ...row } as DutyPeriod;
+}
+
+function asAssigneeChange(row: Record<string, unknown>) {
+  return { ...row } as AssigneeChange;
+}
+
+function asNotification(row: Record<string, unknown>) {
+  return { ...row } as Notification;
 }
 
 function asSettings(row: Record<string, unknown>) {
@@ -930,6 +939,217 @@ export async function updateDutyPeriod(id: string, patch: Partial<DutyPeriod>) {
     .run(...entries.map(([, value]) => value), nowIso(), id);
 }
 
+export async function recordAssigneeChange(params: {
+  duty: DutyPeriod;
+  newAssigneeId: string;
+  newNextAssigneeId: string | null;
+  reason: string;
+  adminId: string;
+}) {
+  const changeId = randomUUID();
+  const now = nowIso();
+  const change = {
+    id: changeId,
+    duty_period_id: params.duty.id,
+    previous_assignee_id: params.duty.assignee_id,
+    new_assignee_id: params.newAssigneeId,
+    previous_next_assignee_id: params.duty.next_assignee_id,
+    new_next_assignee_id: params.newNextAssigneeId,
+    reason: params.reason,
+    created_by: params.adminId,
+    reverted_at: null,
+    reverted_by: null,
+    created_at: now,
+  };
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error: updateError } = await supabase
+      .from("duty_periods")
+      .update({
+        assignee_id: params.newAssigneeId,
+        next_assignee_id: params.newNextAssigneeId,
+      })
+      .eq("id", params.duty.id);
+    if (updateError) throw updateError;
+
+    const { data, error } = await supabase
+      .from("assignee_changes")
+      .insert(change)
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as AssigneeChange;
+  }
+
+  const db = getLocalDb();
+  db.exec("begin");
+  try {
+    db.prepare(
+      `update duty_periods
+       set assignee_id = ?, next_assignee_id = ?, updated_at = ?
+       where id = ?`,
+    ).run(params.newAssigneeId, params.newNextAssigneeId, now, params.duty.id);
+    db.prepare(
+      `insert into assignee_changes
+       (id, duty_period_id, previous_assignee_id, new_assignee_id,
+        previous_next_assignee_id, new_next_assignee_id, reason, created_by, created_at)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      change.id,
+      change.duty_period_id,
+      change.previous_assignee_id,
+      change.new_assignee_id,
+      change.previous_next_assignee_id,
+      change.new_next_assignee_id,
+      change.reason,
+      change.created_by,
+      change.created_at,
+    );
+    db.exec("commit");
+    return asAssigneeChange(change);
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+}
+
+export async function listActiveAssigneeChangesForDuties(dutyIds: string[]) {
+  if (dutyIds.length === 0) {
+    return [];
+  }
+
+  if (!isLocalBackend()) {
+    return sbList<AssigneeChange>((supabase) =>
+      supabase
+        .from("assignee_changes")
+        .select("*")
+        .in("duty_period_id", dutyIds)
+        .is("reverted_at", null)
+        .order("created_at", { ascending: false }),
+    );
+  }
+
+  const placeholders = dutyIds.map(() => "?").join(", ");
+  return getLocalDb()
+    .prepare(
+      `select * from assignee_changes
+       where reverted_at is null
+         and duty_period_id in (${placeholders})
+       order by created_at desc`,
+    )
+    .all(...dutyIds)
+    .map((row) => asAssigneeChange(row as Record<string, unknown>));
+}
+
+export async function revertAssigneeChange(changeId: string, adminId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data: changeData, error: changeError } = await supabase
+      .from("assignee_changes")
+      .select("*")
+      .eq("id", changeId)
+      .is("reverted_at", null)
+      .single();
+    if (changeError) throw changeError;
+    const change = changeData as AssigneeChange;
+
+    const { data: latestData, error: latestError } = await supabase
+      .from("assignee_changes")
+      .select("*")
+      .eq("duty_period_id", change.duty_period_id)
+      .is("reverted_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+    if (latestError) throw latestError;
+    if ((latestData as AssigneeChange).id !== change.id) {
+      throw conflict("Only the latest active assignee change can be reverted");
+    }
+
+    const duty = await loadDutyPeriod(change.duty_period_id);
+    assertDutyMatchesChange(duty, change);
+
+    const now = nowIso();
+    const { error: dutyError } = await supabase
+      .from("duty_periods")
+      .update({
+        assignee_id: change.previous_assignee_id,
+        next_assignee_id: change.previous_next_assignee_id,
+      })
+      .eq("id", change.duty_period_id);
+    if (dutyError) throw dutyError;
+
+    const { error: revertError } = await supabase
+      .from("assignee_changes")
+      .update({ reverted_at: now, reverted_by: adminId })
+      .eq("id", change.id);
+    if (revertError) throw revertError;
+    return change;
+  }
+
+  const db = getLocalDb();
+  const changeRow = db
+    .prepare("select * from assignee_changes where id = ? and reverted_at is null")
+    .get(changeId);
+
+  if (!changeRow) {
+    throw conflict("Assignee change is already reverted or does not exist");
+  }
+
+  const change = asAssigneeChange(changeRow as Record<string, unknown>);
+  const latestRow = db
+    .prepare(
+      `select * from assignee_changes
+       where duty_period_id = ? and reverted_at is null
+       order by created_at desc
+       limit 1`,
+    )
+    .get(change.duty_period_id);
+  const latest = latestRow
+    ? asAssigneeChange(latestRow as Record<string, unknown>)
+    : null;
+
+  if (!latest || latest.id !== change.id) {
+    throw conflict("Only the latest active assignee change can be reverted");
+  }
+
+  const duty = await loadDutyPeriod(change.duty_period_id);
+  assertDutyMatchesChange(duty, change);
+
+  const now = nowIso();
+  db.exec("begin");
+  try {
+    db.prepare(
+      `update duty_periods
+       set assignee_id = ?, next_assignee_id = ?, updated_at = ?
+       where id = ?`,
+    ).run(
+      change.previous_assignee_id,
+      change.previous_next_assignee_id,
+      now,
+      change.duty_period_id,
+    );
+    db.prepare(
+      "update assignee_changes set reverted_at = ?, reverted_by = ? where id = ?",
+    ).run(now, adminId, change.id);
+    db.exec("commit");
+    return change;
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+}
+
+function assertDutyMatchesChange(duty: DutyPeriod, change: AssigneeChange) {
+  if (
+    duty.assignee_id !== change.new_assignee_id ||
+    duty.next_assignee_id !== change.new_next_assignee_id
+  ) {
+    throw conflict("Duty was changed after this record and cannot be reverted directly");
+  }
+}
+
 export async function insertDutyPeriod(params: {
   assigneeId: string;
   nextAssigneeId: string | null;
@@ -1191,7 +1411,8 @@ export async function listFailedNotifications() {
 
   return getLocalDb()
     .prepare("select * from notifications where status = 'failed' order by created_at desc")
-    .all() as Notification[];
+    .all()
+    .map((row) => asNotification(row as Record<string, unknown>));
 }
 
 export async function loadNotification(id: string) {
@@ -1204,7 +1425,7 @@ export async function loadNotification(id: string) {
 
   const row = getLocalDb().prepare("select * from notifications where id = ?").get(id);
   if (!row) throw new Error("Notification not found");
-  return row as Notification;
+  return asNotification(row as Record<string, unknown>);
 }
 
 export async function createNotificationIfMissing(params: {

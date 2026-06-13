@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import type { AppSettings, Profile, Room, Task, DutyPeriod, Notification } from "@/lib/types";
+import type { AppSettings, Profile, Room, Task, Notification } from "@/lib/types";
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
@@ -461,18 +461,15 @@ function renumberRotationItems(
 }
 
 export function ScheduleTools({
-  duties,
   profiles,
   failedNotifications,
   settings,
 }: {
-  duties: DutyPeriod[];
   profiles: Profile[];
   failedNotifications: Notification[];
   settings: AppSettings;
 }) {
   const { message, run } = useApiForm();
-  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
   const activeRotationWorkers = profiles.filter(
     (profile) =>
       profile.role === "worker" &&
@@ -493,25 +490,13 @@ export function ScheduleTools({
     });
   }
 
-  async function changeAssignee(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await run(async () => {
-      await postJson("/api/admin/change-assignee", {
-        dutyPeriodId: String(form.get("dutyPeriodId") ?? ""),
-        newAssigneeId: String(form.get("newAssigneeId") ?? ""),
-        reason: String(form.get("reason") ?? ""),
-      });
-    });
-  }
-
   async function regenerate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await run(async () => {
       await postJson("/api/admin/regenerate-schedule", {
         startDate: String(form.get("startDate") ?? ""),
-        periods: Number(form.get("periods") ?? settings.future_schedule_weeks),
+        endDate: String(form.get("endDate") ?? ""),
       });
     });
   }
@@ -579,32 +564,6 @@ export function ScheduleTools({
         <Button type="submit" className="w-full">Зберегти налаштування</Button>
       </form>
 
-      <form onSubmit={changeAssignee} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-        <h2 className="font-semibold">Одноразово змінити чергового</h2>
-        <p className="text-sm text-stone-600">
-          Для вибраного періоду змінюється тільки черговий. Приймаючий рахується автоматично з rotation order.
-        </p>
-        <select className="h-10 rounded-md border px-3" name="dutyPeriodId" required>
-          {duties.map((duty) => (
-            <option key={duty.id} value={duty.id}>
-              {duty.week_start} - {duty.week_end} · {profileMap.get(duty.assignee_id)?.full_name ?? "Без імені"}
-              {duty.next_assignee_id
-                ? ` -> ${profileMap.get(duty.next_assignee_id)?.full_name ?? "Без імені"}`
-                : ""}
-            </option>
-          ))}
-        </select>
-        <select className="h-10 rounded-md border px-3" name="newAssigneeId" required>
-          {activeRotationWorkers.map((profile) => (
-            <option key={profile.id} value={profile.id}>{profile.full_name}</option>
-          ))}
-        </select>
-        <input className="h-10 rounded-md border px-3" name="reason" placeholder="Причина заміни" required />
-        <Button type="submit" className="w-full" disabled={duties.length === 0 || activeRotationWorkers.length < 2}>
-          Змінити чергового
-        </Button>
-      </form>
-
       <form onSubmit={regenerate} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
         <h2 className="font-semibold">Згенерувати майбутній графік</h2>
         <p className="text-sm text-stone-600">
@@ -615,14 +574,11 @@ export function ScheduleTools({
           <input className="h-10 rounded-md border px-3" name="startDate" type="date" required />
         </label>
         <label className="grid gap-1 text-sm">
-          Скільки чергувань створити
+          Крайня дата чергування
           <input
             className="h-10 rounded-md border px-3"
-            name="periods"
-            defaultValue={settings.future_schedule_weeks}
-            type="number"
-            min={1}
-            max={52}
+            name="endDate"
+            type="date"
             required
           />
         </label>

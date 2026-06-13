@@ -70,6 +70,20 @@ export type DutyPeriod = {
   created_by: string | null;
 };
 
+export type AssigneeChange = {
+  id: string;
+  duty_period_id: string;
+  previous_assignee_id: string;
+  new_assignee_id: string;
+  previous_next_assignee_id: string | null;
+  new_next_assignee_id: string | null;
+  reason: string;
+  created_by: string;
+  reverted_at: string | null;
+  reverted_by: string | null;
+  created_at: string;
+};
+
 export type TaskCheck = {
   id: string;
   duty_period_id: string;
