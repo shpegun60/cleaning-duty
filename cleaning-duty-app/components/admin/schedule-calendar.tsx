@@ -124,6 +124,7 @@ export function ScheduleCalendar({
   const changedDutyIds = new Set(changes.map((change) => change.duty_period_id));
   const previousMonth = format(addMonths(monthDate, -1), "yyyy-MM");
   const nextMonth = format(addMonths(monthDate, 1), "yyyy-MM");
+  const currentMonth = format(new Date(), "yyyy-MM");
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const editingDuty = editingDutyId ? dutyMap.get(editingDutyId) ?? null : null;
   const defaultNewAssigneeId =
@@ -145,6 +146,14 @@ export function ScheduleCalendar({
 
   function goToMonth(targetMonth: string) {
     router.push(`/admin/schedule?month=${targetMonth}`, { scroll: false });
+  }
+
+  function chooseMonth(event: FormEvent<HTMLInputElement>) {
+    const targetMonth = event.currentTarget.value;
+
+    if (/^\d{4}-\d{2}$/.test(targetMonth)) {
+      goToMonth(targetMonth);
+    }
   }
 
   async function changeAssignee(event: FormEvent<HTMLFormElement>) {
@@ -183,26 +192,45 @@ export function ScheduleCalendar({
             Діапазон показує, хто чергує. Останній день діапазону позначений як день передачі.
           </p>
         </div>
-        <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
-          <button
-            type="button"
-            className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
-            onClick={() => goToMonth(previousMonth)}
-            aria-label="Попередній місяць"
-          >
-            ‹
-          </button>
-          <span className="min-w-40 text-center font-semibold">
-            {monthLabels[monthDate.getMonth()]} {format(monthDate, "yyyy")}
-          </span>
-          <button
-            type="button"
-            className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
-            onClick={() => goToMonth(nextMonth)}
-            aria-label="Наступний місяць"
-          >
-            ›
-          </button>
+        <div className="grid gap-2 sm:min-w-80">
+          <div className="grid grid-cols-[40px_1fr_40px] items-center gap-2">
+            <button
+              type="button"
+              className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
+              onClick={() => goToMonth(previousMonth)}
+              aria-label="Попередній місяць"
+            >
+              ‹
+            </button>
+            <span className="min-w-40 text-center font-semibold">
+              {monthLabels[monthDate.getMonth()]} {format(monthDate, "yyyy")}
+            </span>
+            <button
+              type="button"
+              className="flex h-10 items-center justify-center rounded-md border border-stone-300 bg-white text-lg font-semibold hover:bg-stone-100"
+              onClick={() => goToMonth(nextMonth)}
+              aria-label="Наступний місяць"
+            >
+              ›
+            </button>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <input
+              aria-label="Вибрати місяць і рік"
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm"
+              type="month"
+              value={month}
+              onChange={chooseMonth}
+            />
+            <button
+              type="button"
+              className="h-10 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => goToMonth(currentMonth)}
+              disabled={month === currentMonth}
+            >
+              Сьогодні
+            </button>
+          </div>
         </div>
       </div>
 
