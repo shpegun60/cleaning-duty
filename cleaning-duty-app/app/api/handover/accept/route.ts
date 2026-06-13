@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/guards";
-import { nextWeekStartAfter, weekEndFromStart } from "@/lib/domain/dates";
+import { addDaysToDateKey, periodEndFromStart } from "@/lib/domain/dates";
 import {
   assertAllActiveRoomsAccepted,
   findDutyByWeekStart,
+  getAppSettings,
   insertDutyPeriod,
   loadDutyPeriod,
   resolveNextAssignee,
@@ -38,10 +39,15 @@ export async function POST(request: Request) {
       accepted_by: user.id,
     });
 
-    const nextWeekStart = nextWeekStartAfter(duty.week_end);
-    const nextWeekEnd = weekEndFromStart(nextWeekStart);
+    const settings = await getAppSettings();
+    const nextPeriodStart = addDaysToDateKey(duty.week_end, 1);
+    const nextPeriodEnd = periodEndFromStart(
+      nextPeriodStart,
+      settings.rotation_period_unit,
+      settings.rotation_period_count,
+    );
     const nextAssignee = await resolveNextAssignee(user.id);
-    const existingNext = await findDutyByWeekStart(nextWeekStart);
+    const existingNext = await findDutyByWeekStart(nextPeriodStart);
 
     if (existingNext) {
       if (existingNext.status !== "scheduled") {
@@ -57,8 +63,8 @@ export async function POST(request: Request) {
       await insertDutyPeriod({
         assigneeId: user.id,
         nextAssigneeId: nextAssignee.id,
-        weekStart: nextWeekStart,
-        weekEnd: nextWeekEnd,
+        weekStart: nextPeriodStart,
+        weekEnd: nextPeriodEnd,
         status: "active",
         createdBy: user.id,
       });
@@ -69,7 +75,11 @@ export async function POST(request: Request) {
       action: "handover_accepted",
       entityType: "duty_period",
       entityId: duty.id,
-      payload: { nextWeekStart, nextAssigneeId: nextAssignee.id },
+      payload: {
+        nextPeriodStart,
+        nextPeriodEnd,
+        nextAssigneeId: nextAssignee.id,
+      },
     });
 
     return Response.json({ ok: true });

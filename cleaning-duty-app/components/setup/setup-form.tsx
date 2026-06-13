@@ -71,6 +71,8 @@ export function SetupForm({
         sundayReminderHour: Number(form.get("sundayReminderHour") ?? 8),
         reminderWindowHours: Number(form.get("reminderWindowHours") ?? 2),
         futureScheduleWeeks: Number(form.get("futureScheduleWeeks") ?? 12),
+        rotationPeriodUnit: String(form.get("rotationPeriodUnit") ?? "week"),
+        rotationPeriodCount: Number(form.get("rotationPeriodCount") ?? 1),
       });
       setMessage("Налаштування збережено");
       router.refresh();
@@ -191,8 +193,20 @@ export function SetupForm({
               <input className="h-10 rounded-md border px-3" name="reminderWindowHours" defaultValue={settings.reminder_window_hours} type="number" min={1} max={6} />
             </label>
             <label className="grid gap-2 text-sm font-medium">
-              Future schedule weeks
+              Future schedule periods
               <input className="h-10 rounded-md border px-3" name="futureScheduleWeeks" defaultValue={settings.future_schedule_weeks} type="number" min={1} max={52} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Rotation period count
+              <input className="h-10 rounded-md border px-3" name="rotationPeriodCount" defaultValue={settings.rotation_period_count} type="number" min={1} max={12} />
+            </label>
+            <label className="grid gap-2 text-sm font-medium">
+              Rotation period unit
+              <select className="h-10 rounded-md border px-3" name="rotationPeriodUnit" defaultValue={settings.rotation_period_unit}>
+                <option value="day">days</option>
+                <option value="week">weeks</option>
+                <option value="month">months</option>
+              </select>
             </label>
           </div>
         </section>

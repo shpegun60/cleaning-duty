@@ -15,6 +15,7 @@ import type {
   Room,
   RoomAcceptance,
   RoomAcceptanceStatus,
+  RotationPeriodUnit,
   Task,
   TaskCheck,
 } from "@/lib/types";
@@ -1320,6 +1321,8 @@ export async function updateAppSettings(params: {
   sundayReminderHour: number;
   reminderWindowHours: number;
   futureScheduleWeeks: number;
+  rotationPeriodUnit: RotationPeriodUnit;
+  rotationPeriodCount: number;
 }) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
@@ -1331,6 +1334,8 @@ export async function updateAppSettings(params: {
         sunday_reminder_hour: params.sundayReminderHour,
         reminder_window_hours: params.reminderWindowHours,
         future_schedule_weeks: params.futureScheduleWeeks,
+        rotation_period_unit: params.rotationPeriodUnit,
+        rotation_period_count: params.rotationPeriodCount,
       })
       .eq("id", true);
     if (error) throw error;
@@ -1341,7 +1346,8 @@ export async function updateAppSettings(params: {
     .prepare(
       `update app_settings
        set timezone = ?, saturday_reminder_hour = ?, sunday_reminder_hour = ?,
-           reminder_window_hours = ?, future_schedule_weeks = ?, updated_at = ?
+           reminder_window_hours = ?, future_schedule_weeks = ?,
+           rotation_period_unit = ?, rotation_period_count = ?, updated_at = ?
        where id = 1`,
     )
     .run(
@@ -1350,6 +1356,8 @@ export async function updateAppSettings(params: {
       params.sundayReminderHour,
       params.reminderWindowHours,
       params.futureScheduleWeeks,
+      params.rotationPeriodUnit,
+      params.rotationPeriodCount,
       nowIso(),
     );
 }
@@ -1360,12 +1368,15 @@ export function updateLocalAppSettingsDirect(params: {
   sundayReminderHour: number;
   reminderWindowHours: number;
   futureScheduleWeeks: number;
+  rotationPeriodUnit: RotationPeriodUnit;
+  rotationPeriodCount: number;
 }) {
   getLocalDb()
     .prepare(
       `update app_settings
        set timezone = ?, saturday_reminder_hour = ?, sunday_reminder_hour = ?,
-           reminder_window_hours = ?, future_schedule_weeks = ?, updated_at = ?
+           reminder_window_hours = ?, future_schedule_weeks = ?,
+           rotation_period_unit = ?, rotation_period_count = ?, updated_at = ?
        where id = 1`,
     )
     .run(
@@ -1374,6 +1385,8 @@ export function updateLocalAppSettingsDirect(params: {
       params.sundayReminderHour,
       params.reminderWindowHours,
       params.futureScheduleWeeks,
+      params.rotationPeriodUnit,
+      params.rotationPeriodCount,
       nowIso(),
     );
 }

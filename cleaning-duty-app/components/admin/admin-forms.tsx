@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import type { Profile, Room, Task, DutyPeriod, Notification } from "@/lib/types";
+import type { AppSettings, Profile, Room, Task, DutyPeriod, Notification } from "@/lib/types";
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
@@ -464,12 +464,35 @@ export function ScheduleTools({
   duties,
   profiles,
   failedNotifications,
+  settings,
 }: {
   duties: DutyPeriod[];
   profiles: Profile[];
   failedNotifications: Notification[];
+  settings: AppSettings;
 }) {
   const { message, run } = useApiForm();
+  const profileMap = new Map(profiles.map((profile) => [profile.id, profile]));
+  const activeRotationWorkers = profiles.filter(
+    (profile) =>
+      profile.role === "worker" &&
+      profile.is_active &&
+      profile.rotation_order !== null &&
+      profile.rotation_order >= 1,
+  );
+
+  async function saveSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+
+    await run(async () => {
+      await postJson("/api/admin/schedule-settings", {
+        rotationPeriodCount: Number(form.get("rotationPeriodCount") ?? 1),
+        rotationPeriodUnit: String(form.get("rotationPeriodUnit") ?? "week"),
+        futureScheduleWeeks: Number(form.get("futureScheduleWeeks") ?? 12),
+      });
+    });
+  }
 
   async function changeAssignee(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -488,8 +511,8 @@ export function ScheduleTools({
     const form = new FormData(event.currentTarget);
     await run(async () => {
       await postJson("/api/admin/regenerate-schedule", {
-        startWeek: String(form.get("startWeek") ?? ""),
-        weeks: Number(form.get("weeks") ?? 12),
+        startDate: String(form.get("startDate") ?? ""),
+        periods: Number(form.get("periods") ?? settings.future_schedule_weeks),
       });
     });
   }
@@ -505,40 +528,123 @@ export function ScheduleTools({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
+    <div className="grid gap-4 lg:grid-cols-2">
+      <form onSubmit={saveSettings} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
+        <h2 className="font-semibold">Налаштування чергування</h2>
+        <p className="text-sm text-stone-600">
+          Як часто змінюється черговий і скільки майбутніх періодів генерувати.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr]">
+          <label className="grid gap-1 text-sm">
+            Кількість
+            <input
+              className="h-10 rounded-md border px-3"
+              name="rotationPeriodCount"
+              defaultValue={settings.rotation_period_count}
+              type="number"
+              min={1}
+              max={12}
+            />
+          </label>
+          <label className="grid gap-1 text-sm">
+            Одиниця
+            <select
+              className="h-10 rounded-md border px-3"
+              name="rotationPeriodUnit"
+              defaultValue={settings.rotation_period_unit}
+            >
+              <option value="day">день / дні</option>
+              <option value="week">тиждень / тижні</option>
+              <option value="month">місяць / місяці</option>
+            </select>
+          </label>
+        </div>
+        <label className="grid gap-1 text-sm">
+          Майбутніх періодів
+          <input
+            className="h-10 rounded-md border px-3"
+            name="futureScheduleWeeks"
+            defaultValue={settings.future_schedule_weeks}
+            type="number"
+            min={1}
+            max={52}
+          />
+        </label>
+        <Button type="submit" className="w-full">Зберегти налаштування</Button>
+      </form>
+
       <form onSubmit={changeAssignee} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-        <h2 className="font-semibold">Змінити чергового</h2>
+        <h2 className="font-semibold">Одноразово змінити чергового</h2>
+        <p className="text-sm text-stone-600">
+          Для вибраного періоду змінюється тільки черговий. Приймаючий рахується автоматично з rotation order.
+        </p>
         <select className="h-10 rounded-md border px-3" name="dutyPeriodId" required>
           {duties.map((duty) => (
-            <option key={duty.id} value={duty.id}>{duty.week_start} · {duty.status}</option>
+            <option key={duty.id} value={duty.id}>
+              {duty.week_start} - {duty.week_end} · {profileMap.get(duty.assignee_id)?.full_name ?? "Без імені"}
+              {duty.next_assignee_id
+                ? ` -> ${profileMap.get(duty.next_assignee_id)?.full_name ?? "Без імені"}`
+                : ""}
+            </option>
           ))}
         </select>
         <select className="h-10 rounded-md border px-3" name="newAssigneeId" required>
-          {profiles.filter((profile) => profile.is_active).map((profile) => (
+          {activeRotationWorkers.map((profile) => (
             <option key={profile.id} value={profile.id}>{profile.full_name}</option>
           ))}
         </select>
-        <input className="h-10 rounded-md border px-3" name="reason" placeholder="Причина" required />
-        <Button type="submit">Змінити</Button>
+        <input className="h-10 rounded-md border px-3" name="reason" placeholder="Причина заміни" required />
+        <Button type="submit" className="w-full" disabled={duties.length === 0 || activeRotationWorkers.length < 2}>
+          Змінити чергового
+        </Button>
       </form>
 
       <form onSubmit={regenerate} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-        <h2 className="font-semibold">Перегенерувати майбутній графік</h2>
-        <input className="h-10 rounded-md border px-3" name="startWeek" placeholder="2026-06-22" required />
-        <input className="h-10 rounded-md border px-3" name="weeks" defaultValue={12} type="number" min={1} max={52} required />
-        <Button type="submit">Згенерувати</Button>
+        <h2 className="font-semibold">Згенерувати майбутній графік</h2>
+        <p className="text-sm text-stone-600">
+          Видаляє тільки майбутні scheduled записи від цієї дати. Історію і завершені періоди не чіпає.
+        </p>
+        <label className="grid gap-1 text-sm">
+          Початок першого періоду
+          <input className="h-10 rounded-md border px-3" name="startDate" type="date" required />
+        </label>
+        <label className="grid gap-1 text-sm">
+          Кількість періодів
+          <input
+            className="h-10 rounded-md border px-3"
+            name="periods"
+            defaultValue={settings.future_schedule_weeks}
+            type="number"
+            min={1}
+            max={52}
+            required
+          />
+        </label>
+        <p className="text-sm text-stone-600">
+          Поточна довжина періоду: {settings.rotation_period_count} {periodUnitLabel(settings.rotation_period_unit)}.
+        </p>
+        <Button type="submit" className="w-full" disabled={activeRotationWorkers.length < 2}>
+          Згенерувати графік
+        </Button>
       </form>
 
       <form onSubmit={retry} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-        <h2 className="font-semibold">Retry email</h2>
+        <h2 className="font-semibold">Повторити email</h2>
+        <p className="text-sm text-stone-600">Повторна відправка повідомлень, які завершились помилкою.</p>
         <select className="h-10 rounded-md border px-3" name="notificationId" required>
           {failedNotifications.map((notification) => (
             <option key={notification.id} value={notification.id}>{notification.type} · {notification.id.slice(0, 8)}</option>
           ))}
         </select>
-        <Button type="submit" disabled={failedNotifications.length === 0}>Повторити</Button>
+        <Button type="submit" className="w-full" disabled={failedNotifications.length === 0}>Повторити</Button>
       </form>
-      {message ? <p className="text-sm text-stone-700 lg:col-span-3">{message}</p> : null}
+      {message ? <p className="text-sm text-stone-700 lg:col-span-2">{message}</p> : null}
     </div>
   );
+}
+
+function periodUnitLabel(unit: AppSettings["rotation_period_unit"]) {
+  if (unit === "day") return "день/дні";
+  if (unit === "month") return "місяць/місяці";
+  return "тиждень/тижні";
 }

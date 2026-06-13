@@ -34,8 +34,13 @@ export async function POST(request: Request) {
 
     const newAssignee = await loadProfile(body.newAssigneeId);
 
-    if (!newAssignee.is_active) {
-      throw conflict("New assignee must be active");
+    if (
+      newAssignee.role !== "worker" ||
+      !newAssignee.is_active ||
+      newAssignee.rotation_order === null ||
+      newAssignee.rotation_order < 1
+    ) {
+      throw conflict("New assignee must be an active worker in rotation");
     }
 
     const nextAssignee = await resolveNextAssignee(newAssignee.id);

@@ -22,6 +22,8 @@ const SetupConfigSchema = z.object({
   sundayReminderHour: z.number().int().min(0).max(23),
   reminderWindowHours: z.number().int().min(1).max(6),
   futureScheduleWeeks: z.number().int().min(1).max(52),
+  rotationPeriodUnit: z.enum(["day", "week", "month"]),
+  rotationPeriodCount: z.number().int().min(1).max(12),
 });
 
 export async function POST(request: Request) {
@@ -52,6 +54,8 @@ export async function POST(request: Request) {
       sundayReminderHour: body.sundayReminderHour,
       reminderWindowHours: body.reminderWindowHours,
       futureScheduleWeeks: body.futureScheduleWeeks,
+      rotationPeriodUnit: body.rotationPeriodUnit,
+      rotationPeriodCount: body.rotationPeriodCount,
     });
 
     writeLocalAuditLogDirect({
@@ -70,6 +74,8 @@ export async function POST(request: Request) {
           sundayReminderHour: body.sundayReminderHour,
           reminderWindowHours: body.reminderWindowHours,
           futureScheduleWeeks: body.futureScheduleWeeks,
+          rotationPeriodUnit: body.rotationPeriodUnit,
+          rotationPeriodCount: body.rotationPeriodCount,
         },
       },
     });

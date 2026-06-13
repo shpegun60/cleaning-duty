@@ -1,34 +1,32 @@
-import { addDays, format, parseISO } from "date-fns";
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   deleteFutureScheduledDuties,
+  getAppSettings,
   getNextRotationUser,
   insertDutyPeriod,
   listActiveRotationProfiles,
   previousDutyBefore,
   writeAuditLog,
 } from "@/lib/data/store";
+import { addDaysToDateKey, periodEndFromStart } from "@/lib/domain/dates";
 import { badRequest, conflict, handleRouteError } from "@/lib/http";
 
 const RegenerateScheduleSchema = z.object({
-  startWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  weeks: z.number().int().min(1).max(52),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  periods: z.number().int().min(1).max(52).optional(),
+  startWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  weeks: z.number().int().min(1).max(52).optional(),
 });
-
-function isMonday(dateKey: string) {
-  return parseISO(dateKey).getDay() === 1;
-}
 
 export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = RegenerateScheduleSchema.parse(await request.json());
-
-    if (!isMonday(body.startWeek)) {
-      throw badRequest("startWeek must be a Monday");
-    }
+    const settings = await getAppSettings();
+    const startDate = body.startDate ?? body.startWeek;
+    const periods = body.periods ?? body.weeks ?? settings.future_schedule_weeks;
 
     const users = await listActiveRotationProfiles();
 
@@ -36,29 +34,38 @@ export async function POST(request: Request) {
       throw conflict("At least two active users with rotation order are required");
     }
 
-    const previousDuty = await previousDutyBefore(body.startWeek);
-    await deleteFutureScheduledDuties(body.startWeek);
+    if (!startDate) {
+      throw badRequest("Start date is required");
+    }
+
+    const previousDuty = await previousDutyBefore(startDate);
+    await deleteFutureScheduledDuties(startDate);
 
     let assignee = previousDuty
       ? getNextRotationUser(users, previousDuty.assignee_id as string)
       : users[0];
     const rows = [];
+    let periodStart = startDate;
 
-    for (let index = 0; index < body.weeks; index += 1) {
-      const weekStart = format(addDays(parseISO(body.startWeek), index * 7), "yyyy-MM-dd");
-      const weekEnd = format(addDays(parseISO(weekStart), 6), "yyyy-MM-dd");
+    for (let index = 0; index < periods; index += 1) {
+      const periodEnd = periodEndFromStart(
+        periodStart,
+        settings.rotation_period_unit,
+        settings.rotation_period_count,
+      );
       const nextAssignee = getNextRotationUser(users, assignee.id);
 
       rows.push({
         assignee_id: assignee.id,
         next_assignee_id: nextAssignee.id,
-        week_start: weekStart,
-        week_end: weekEnd,
+        week_start: periodStart,
+        week_end: periodEnd,
         status: "scheduled",
         created_by: admin.id,
       });
 
       assignee = nextAssignee;
+      periodStart = addDaysToDateKey(periodEnd, 1);
     }
 
     for (const row of rows) {
@@ -76,7 +83,12 @@ export async function POST(request: Request) {
       actorId: admin.id,
       action: "future_schedule_regenerated",
       entityType: "duty_period",
-      payload: body,
+      payload: {
+        startDate,
+        periods,
+        rotationPeriodUnit: settings.rotation_period_unit,
+        rotationPeriodCount: settings.rotation_period_count,
+      },
     });
 
     return Response.json({ ok: true, created: rows.length });

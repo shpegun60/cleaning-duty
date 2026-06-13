@@ -23,6 +23,8 @@ export type NotificationStatus = "pending" | "sent" | "failed" | "skipped";
 
 export type RoomAcceptanceStatus = "pending" | "accepted" | "rejected";
 
+export type RotationPeriodUnit = "day" | "week" | "month";
+
 export type Profile = {
   id: string;
   email: string;
@@ -107,4 +109,6 @@ export type AppSettings = {
   sunday_reminder_hour: number;
   reminder_window_hours: number;
   future_schedule_weeks: number;
+  rotation_period_unit: RotationPeriodUnit;
+  rotation_period_count: number;
 };

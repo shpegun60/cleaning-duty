@@ -146,10 +146,15 @@ function initializeLocalDb(db: DatabaseSync) {
       sunday_reminder_hour integer not null default 8,
       reminder_window_hours integer not null default 2,
       future_schedule_weeks integer not null default 12,
+      rotation_period_unit text not null default 'week',
+      rotation_period_count integer not null default 1,
       created_at text not null default current_timestamp,
       updated_at text not null default current_timestamp
     );
   `);
+
+  ensureColumn(db, "app_settings", "rotation_period_unit", "text not null default 'week'");
+  ensureColumn(db, "app_settings", "rotation_period_count", "integer not null default 1");
 
   db.prepare(
     `insert or ignore into profiles
@@ -179,8 +184,8 @@ function initializeLocalDb(db: DatabaseSync) {
 
   db.prepare(
     `insert or ignore into app_settings
-      (id, timezone, saturday_reminder_hour, sunday_reminder_hour, reminder_window_hours, future_schedule_weeks)
-     values (1, 'Europe/Warsaw', 8, 8, 2, 12)`,
+      (id, timezone, saturday_reminder_hour, sunday_reminder_hour, reminder_window_hours, future_schedule_weeks, rotation_period_unit, rotation_period_count)
+     values (1, 'Europe/Warsaw', 8, 8, 2, 12, 'week', 1)`,
   ).run();
 
   const seeded = db.prepare("select count(*) as count from rooms").get() as { count: number };
@@ -194,6 +199,13 @@ function initializeLocalDb(db: DatabaseSync) {
     db.prepare(
       "insert into rooms (id, name, description, sort_order, is_active) values (?, ?, ?, ?, ?)",
     ).run("room-hall", "Коридор", "Підлога і спільні поверхні", 30, 1);
+  }
+}
+
+function ensureColumn(db: DatabaseSync, table: string, column: string, definition: string) {
+  const columns = db.prepare(`pragma table_info(${table})`).all() as Array<{ name: string }>;
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`alter table ${table} add column ${column} ${definition}`);
   }
 }
 
