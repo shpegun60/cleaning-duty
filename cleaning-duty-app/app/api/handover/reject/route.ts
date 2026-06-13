@@ -1,14 +1,21 @@
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/guards";
-import { createNotificationIfMissing, markNotificationFailed, markNotificationSent } from "@/lib/domain/notifications";
-import { writeAuditLog } from "@/lib/domain/audit";
-import { loadActiveRoom, loadDutyPeriod, loadProfile } from "@/lib/domain/loaders";
-import { getAppUrl } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
+import {
+  createNotificationIfMissing,
+  loadActiveRoom,
+  loadDutyPeriod,
+  loadProfile,
+  markNotificationFailed,
+  markNotificationSent,
+  updateDutyPeriod,
+  upsertRoomAcceptance,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handoverRejectedTemplate } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send-email";
 import { conflict, forbidden, handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const RejectHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -20,8 +27,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = RejectHandoverSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const duty = await loadDutyPeriod(supabase, body.dutyPeriodId);
+    const duty = await loadDutyPeriod(body.dutyPeriodId);
 
     if (duty.next_assignee_id !== user.id) {
       throw forbidden("Only the next assignee can reject handover");
@@ -32,44 +38,29 @@ export async function POST(request: Request) {
     }
 
     for (const roomId of body.rejectedRoomIds) {
-      await loadActiveRoom(supabase, roomId);
+      await loadActiveRoom(roomId);
     }
 
     const now = new Date().toISOString();
-    const rows = body.rejectedRoomIds.map((roomId) => ({
-      duty_period_id: duty.id,
-      room_id: roomId,
-      accepted_by: user.id,
-      status: "rejected",
-      checked_at: now,
-      comment: body.comment,
-    }));
-
-    const { error: roomError } = await supabase
-      .from("room_acceptances")
-      .upsert(rows, { onConflict: "duty_period_id,room_id" });
-
-    if (roomError) {
-      throw roomError;
+    for (const roomId of body.rejectedRoomIds) {
+      await upsertRoomAcceptance({
+        dutyPeriodId: duty.id,
+        roomId,
+        acceptedBy: user.id,
+        status: "rejected",
+        comment: body.comment,
+      });
     }
 
-    const { error: dutyError } = await supabase
-      .from("duty_periods")
-      .update({
+    await updateDutyPeriod(duty.id, {
         status: "rejected",
         rejected_by: user.id,
         rejected_at: now,
         reject_comment: body.comment,
-      })
-      .eq("id", duty.id);
+    });
 
-    if (dutyError) {
-      throw dutyError;
-    }
-
-    const assignee = await loadProfile(supabase, duty.assignee_id);
+    const assignee = await loadProfile(duty.assignee_id);
     const notification = await createNotificationIfMissing({
-      supabase,
       dutyPeriodId: duty.id,
       recipientId: assignee.id,
       type: "handover_rejected",
@@ -81,16 +72,16 @@ export async function POST(request: Request) {
         const template = handoverRejectedTemplate({
           name: assignee.full_name,
           comment: body.comment,
-          dutyUrl: `${getAppUrl()}/duty/${duty.id}`,
+          dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
         });
         await sendEmail({ to: assignee.email, ...template });
-        await markNotificationSent(supabase, notification.id);
+        await markNotificationSent(notification.id);
       } catch (errorCause) {
-        await markNotificationFailed(supabase, notification.id, errorCause);
+        await markNotificationFailed(notification.id, errorCause);
       }
     }
 
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: user.id,
       action: "handover_rejected",
       entityType: "duty_period",

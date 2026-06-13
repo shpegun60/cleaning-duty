@@ -1,10 +1,10 @@
 import { getDay } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 
-import { getAppTimezone } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
 
 export function getLocalSchedulerState(now = new Date()) {
-  const timezone = getAppTimezone();
+  const timezone = readRuntimeConfig().appTimezone;
   const zoned = toZonedTime(now, timezone);
 
   return {

@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
-import { loadActiveTask, loadDutyPeriod } from "@/lib/domain/loaders";
+import {
+  loadActiveTask,
+  loadDutyPeriod,
+  upsertTaskCheck,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { conflict, forbidden, handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const TaskCheckSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -16,8 +19,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = TaskCheckSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const duty = await loadDutyPeriod(supabase, body.dutyPeriodId);
+    const duty = await loadDutyPeriod(body.dutyPeriodId);
 
     if (duty.assignee_id !== user.id) {
       throw forbidden("Only the assignee can update task checks");
@@ -27,24 +29,15 @@ export async function POST(request: Request) {
       throw conflict("Duty status does not allow task checks");
     }
 
-    await loadActiveTask(supabase, body.taskId);
+    await loadActiveTask(body.taskId);
+    await upsertTaskCheck({
+      dutyPeriodId: body.dutyPeriodId,
+      taskId: body.taskId,
+      checkedBy: user.id,
+      isChecked: body.isChecked,
+    });
 
-    const { error } = await supabase.from("task_checks").upsert(
-      {
-        duty_period_id: body.dutyPeriodId,
-        task_id: body.taskId,
-        checked_by: user.id,
-        is_checked: body.isChecked,
-        checked_at: body.isChecked ? new Date().toISOString() : null,
-      },
-      { onConflict: "duty_period_id,task_id" },
-    );
-
-    if (error) {
-      throw error;
-    }
-
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: user.id,
       action: "task_check_updated",
       entityType: "task_check",

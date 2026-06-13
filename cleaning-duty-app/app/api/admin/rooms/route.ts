@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
+import { upsertRoom, writeAuditLog } from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const RoomSchema = z.object({
   id: z.string().uuid().optional(),
@@ -17,35 +16,23 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = RoomSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-
-    const payload = {
-      ...(body.id ? { id: body.id } : {}),
+    const id = await upsertRoom({
+      id: body.id,
       name: body.name,
       description: body.description,
-      sort_order: body.sortOrder,
-      is_active: body.isActive,
-    };
+      sortOrder: body.sortOrder,
+      isActive: body.isActive,
+    });
 
-    const { data, error } = await supabase
-      .from("rooms")
-      .upsert(payload)
-      .select("id")
-      .single();
-
-    if (error) {
-      throw error;
-    }
-
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: body.id ? "room_updated" : "room_created",
       entityType: "room",
-      entityId: data.id,
+      entityId: id,
       payload: body,
     });
 
-    return Response.json({ ok: true, id: data.id });
+    return Response.json({ ok: true, id });
   } catch (error) {
     return handleRouteError(error);
   }

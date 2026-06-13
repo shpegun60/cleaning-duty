@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
+import { updateProfile, writeAuditLog } from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const UpdateProfileSchema = z.object({
   userId: z.string().uuid(),
@@ -17,23 +16,9 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = UpdateProfileSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
+    await updateProfile(body);
 
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: body.fullName,
-        role: body.role,
-        rotation_order: body.rotationOrder,
-        is_active: body.isActive,
-      })
-      .eq("id", body.userId);
-
-    if (error) {
-      throw error;
-    }
-
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "profile_updated",
       entityType: "profile",

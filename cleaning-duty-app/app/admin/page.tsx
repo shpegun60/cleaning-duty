@@ -1,30 +1,19 @@
 import Link from "next/link";
 
 import { StatusBadge } from "@/components/ui/status-badge";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listDuties, listFailedNotifications, listProfiles } from "@/lib/data/store";
 import type { DutyPeriod, Notification, Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
-  const supabase = createSupabaseAdminClient();
-  const [{ data: duties }, { data: notifications }, { data: profiles }] =
-    await Promise.all([
-      supabase
-        .from("duty_periods")
-        .select("*")
-        .order("week_start", { ascending: false })
-        .limit(8),
-      supabase
-        .from("notifications")
-        .select("*")
-        .eq("status", "failed")
-        .order("created_at", { ascending: false })
-        .limit(8),
-      supabase.from("profiles").select("*"),
-    ]);
+  const [duties, notifications, profiles] = await Promise.all([
+    listDuties(8),
+    listFailedNotifications(),
+    listProfiles(),
+  ]);
   const profileMap = new Map(
-    ((profiles ?? []) as Profile[]).map((profile) => [profile.id, profile]),
+    (profiles as Profile[]).map((profile) => [profile.id, profile]),
   );
 
   return (
@@ -39,7 +28,7 @@ export default async function AdminDashboardPage() {
       <section className="rounded-md border border-stone-200 bg-white p-4">
         <h2 className="mb-3 text-lg font-semibold">Останні чергування</h2>
         <div className="grid gap-2">
-          {((duties ?? []) as DutyPeriod[]).map((duty) => (
+          {(duties as DutyPeriod[]).map((duty) => (
             <Link
               key={duty.id}
               className="grid gap-2 rounded-md border border-stone-100 p-3 hover:bg-stone-50 sm:grid-cols-[1fr_auto_auto]"
@@ -61,13 +50,13 @@ export default async function AdminDashboardPage() {
       <section className="rounded-md border border-stone-200 bg-white p-4">
         <h2 className="mb-3 text-lg font-semibold">Failed notifications</h2>
         <div className="grid gap-2">
-          {((notifications ?? []) as Notification[]).map((notification) => (
+          {(notifications.slice(0, 8) as Notification[]).map((notification) => (
             <div key={notification.id} className="rounded-md border border-stone-100 p-3">
               <p className="font-semibold">{notification.type}</p>
               <p className="text-sm text-stone-600">{notification.error_message}</p>
             </div>
           ))}
-          {(notifications ?? []).length === 0 ? (
+          {notifications.length === 0 ? (
             <p className="text-sm text-stone-600">Немає failed notifications.</p>
           ) : null}
         </div>

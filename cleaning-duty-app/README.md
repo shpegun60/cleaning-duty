@@ -8,6 +8,7 @@ MVP web app for weekly cleaning duty, task checklists, room handover, reject/rec
 - Supabase Auth/PostgreSQL/RLS
 - Resend email
 - Vercel Cron
+- Local SQLite mode via Node.js 22 `node:sqlite`
 
 ## Local setup
 
@@ -29,6 +30,27 @@ Then open:
 http://127.0.0.1:3000/login
 ```
 
+By default the app starts in Local SQLite mode. Use:
+
+```text
+login: admin
+password: admin
+```
+
+The system setup admin is always available at:
+
+```text
+http://127.0.0.1:3000/setup
+```
+
+From `/setup` you can:
+
+- keep `Local SQLite` mode with a local database in `data/cleaning-duty.sqlite`
+- switch to `Supabase` mode
+- enter Supabase URL, publishable key, secret key, Resend key, cron secret, sender email
+- change app timezone and reminder schedule settings
+- change the setup admin username/password
+
 Generic setup on a machine that already has Node.js:
 
 ```bash
@@ -37,7 +59,7 @@ cp .env.local.example .env.local
 npm run dev
 ```
 
-The app expects real Supabase and Resend values in `.env.local` for authenticated flows. Without them, `/login` still renders, but auth/API routes cannot complete.
+The app can run without Supabase in Local SQLite mode. Supabase and Resend values are only required after switching backend mode to `supabase`. Local SQLite mode requires Node.js 22 or newer.
 
 ## Required environment
 
@@ -54,7 +76,9 @@ CRON_SECRET=
 
 ## Database
 
-Run the SQL files in `supabase/migrations` in order:
+For Local SQLite mode, the database is created automatically in `data/cleaning-duty.sqlite`.
+
+For Supabase mode, run the SQL files in `supabase/migrations` in order:
 
 1. `001_extensions.sql`
 2. `002_enums.sql`

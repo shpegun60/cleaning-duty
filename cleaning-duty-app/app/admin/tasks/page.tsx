@@ -1,27 +1,14 @@
 import { TaskForm } from "@/components/admin/admin-forms";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listRooms, listTasks } from "@/lib/data/store";
 import type { Room, Task } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminTasksPage() {
-  const supabase = createSupabaseAdminClient();
-  const [{ data: rooms, error: roomsError }, { data: tasks, error: tasksError }] =
-    await Promise.all([
-      supabase.from("rooms").select("*").order("sort_order", { ascending: true }),
-      supabase.from("tasks").select("*").order("sort_order", { ascending: true }),
-    ]);
-
-  if (roomsError) {
-    throw roomsError;
-  }
-
-  if (tasksError) {
-    throw tasksError;
-  }
-
-  const roomList = (rooms ?? []) as Room[];
-  const taskList = (tasks ?? []) as Task[];
+  const [roomList, taskList] = (await Promise.all([listRooms(), listTasks()])) as [
+    Room[],
+    Task[],
+  ];
 
   return (
     <div className="grid gap-6">

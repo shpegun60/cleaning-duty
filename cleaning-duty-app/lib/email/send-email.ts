@@ -1,4 +1,4 @@
-import { getEmailFrom } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
 import { createResendClient } from "@/lib/email/resend";
 
 export async function sendEmail(params: {
@@ -7,9 +7,10 @@ export async function sendEmail(params: {
   html: string;
 }) {
   const resend = createResendClient();
+  const config = readRuntimeConfig();
 
   const { error } = await resend.emails.send({
-    from: getEmailFrom(),
+    from: config.emailFrom,
     to: params.to,
     subject: params.subject,
     html: params.html,

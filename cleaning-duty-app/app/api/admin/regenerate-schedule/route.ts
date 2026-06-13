@@ -2,10 +2,15 @@ import { addDays, format, parseISO } from "date-fns";
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
-import { getRotationUsers, getNextRotationUser } from "@/lib/domain/rotation";
+import {
+  deleteFutureScheduledDuties,
+  getNextRotationUser,
+  insertDutyPeriod,
+  listActiveRotationProfiles,
+  previousDutyBefore,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { badRequest, conflict, handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const RegenerateScheduleSchema = z.object({
   startWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -25,35 +30,14 @@ export async function POST(request: Request) {
       throw badRequest("startWeek must be a Monday");
     }
 
-    const supabase = createSupabaseAdminClient();
-    const users = await getRotationUsers(supabase);
+    const users = await listActiveRotationProfiles();
 
     if (users.length < 2) {
       throw conflict("At least two active users with rotation order are required");
     }
 
-    const { data: previousDuty, error: previousError } = await supabase
-      .from("duty_periods")
-      .select("assignee_id")
-      .lt("week_start", body.startWeek)
-      .neq("status", "cancelled")
-      .order("week_start", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (previousError) {
-      throw previousError;
-    }
-
-    const { error: deleteError } = await supabase
-      .from("duty_periods")
-      .delete()
-      .eq("status", "scheduled")
-      .gte("week_start", body.startWeek);
-
-    if (deleteError) {
-      throw deleteError;
-    }
+    const previousDuty = await previousDutyBefore(body.startWeek);
+    await deleteFutureScheduledDuties(body.startWeek);
 
     let assignee = previousDuty
       ? getNextRotationUser(users, previousDuty.assignee_id as string)
@@ -77,15 +61,18 @@ export async function POST(request: Request) {
       assignee = nextAssignee;
     }
 
-    if (rows.length > 0) {
-      const { error: insertError } = await supabase.from("duty_periods").insert(rows);
-
-      if (insertError) {
-        throw insertError;
-      }
+    for (const row of rows) {
+      await insertDutyPeriod({
+        assigneeId: row.assignee_id,
+        nextAssigneeId: row.next_assignee_id,
+        weekStart: row.week_start,
+        weekEnd: row.week_end,
+        status: "scheduled",
+        createdBy: admin.id,
+      });
     }
 
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "future_schedule_regenerated",
       entityType: "duty_period",

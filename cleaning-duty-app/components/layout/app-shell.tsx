@@ -26,6 +26,9 @@ export function AppShell({
                 Адмінка
               </Link>
             ) : null}
+            <Link className="rounded-md px-3 py-2 hover:bg-stone-100" href="/setup">
+              Setup
+            </Link>
             <span className="rounded-md bg-stone-100 px-3 py-2 text-stone-700">
               {user.full_name}
             </span>

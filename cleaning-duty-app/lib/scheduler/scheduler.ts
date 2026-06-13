@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 
+import { isLocalBackend } from "@/lib/data/store";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getLocalSchedulerState, isReminderWindow } from "@/lib/scheduler/dates";
 import {
@@ -11,6 +12,16 @@ const SATURDAY = 6;
 const SUNDAY = 0;
 
 export async function runScheduler() {
+  if (isLocalBackend()) {
+    const local = getLocalSchedulerState();
+    return {
+      skipped: true,
+      reason: "local_backend_scheduler_email_disabled",
+      localDate: local.dateKey,
+      localHour: local.hour,
+    };
+  }
+
   const supabase = createSupabaseAdminClient();
   const owner = randomUUID();
 

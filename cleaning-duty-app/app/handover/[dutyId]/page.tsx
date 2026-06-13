@@ -4,8 +4,12 @@ import { HandoverChecklist } from "@/components/handover/handover-checklist";
 import { AppShell } from "@/components/layout/app-shell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
-import { loadDutyPeriod, loadProfile } from "@/lib/domain/loaders";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  listRoomAcceptances,
+  listRooms,
+  loadDutyPeriod,
+  loadProfile,
+} from "@/lib/data/store";
 import type { Room, RoomAcceptance } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,29 +21,24 @@ export default async function HandoverPage({
 }) {
   const user = await requireUserPage();
   const { dutyId } = await params;
-  const supabase = createSupabaseAdminClient();
-  const duty = await loadDutyPeriod(supabase, dutyId);
+  const duty = await loadDutyPeriod(dutyId);
 
   if (duty.next_assignee_id !== user.id && user.role !== "admin") {
     notFound();
   }
 
-  const [{ data: rooms }, { data: acceptances }] = await Promise.all([
-    supabase
-      .from("rooms")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true }),
-    supabase.from("room_acceptances").select("*").eq("duty_period_id", duty.id),
+  const [rooms, acceptances] = await Promise.all([
+    listRooms({ activeOnly: true }),
+    listRoomAcceptances(duty.id),
   ]);
-  const previous = await loadProfile(supabase, duty.assignee_id);
+  const previous = await loadProfile(duty.assignee_id);
   const acceptanceMap = new Map(
-    ((acceptances ?? []) as RoomAcceptance[]).map((acceptance) => [
+    (acceptances as RoomAcceptance[]).map((acceptance) => [
       acceptance.room_id,
       acceptance.status,
     ]),
   );
-  const roomItems = ((rooms ?? []) as Room[]).map((room) => ({
+  const roomItems = (rooms as Room[]).map((room) => ({
     id: room.id,
     name: room.name,
     description: room.description,

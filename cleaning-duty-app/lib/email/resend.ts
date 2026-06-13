@@ -1,7 +1,13 @@
 import { Resend } from "resend";
 
-import { requireEnv } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
 
 export function createResendClient() {
-  return new Resend(requireEnv("RESEND_API_KEY"));
+  const apiKey = readRuntimeConfig().resendApiKey;
+
+  if (!apiKey) {
+    throw new Error("Missing Resend API key");
+  }
+
+  return new Resend(apiKey);
 }

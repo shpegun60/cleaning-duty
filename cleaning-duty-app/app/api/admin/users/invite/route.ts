@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
+import { createProfile, writeAuditLog } from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const InviteUserSchema = z.object({
   email: z.string().email(),
@@ -16,35 +15,14 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = InviteUserSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-
-    const { data: inviteData, error: inviteError } =
-      await supabase.auth.admin.inviteUserByEmail(body.email);
-
-    if (inviteError) {
-      throw inviteError;
-    }
-
-    const userId = inviteData.user?.id;
-
-    if (!userId) {
-      throw new Error("Invite did not return user id");
-    }
-
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: userId,
+    const userId = await createProfile({
       email: body.email,
-      full_name: body.fullName,
+      fullName: body.fullName,
       role: body.role,
-      rotation_order: body.rotationOrder,
-      is_active: true,
+      rotationOrder: body.rotationOrder,
     });
 
-    if (profileError) {
-      throw profileError;
-    }
-
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "user_invited",
       entityType: "profile",

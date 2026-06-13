@@ -1,8 +1,18 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/types";
 import { forbidden, unauthorized } from "@/lib/http";
+import { isLocalBackend, loadProfile } from "@/lib/data/store";
+import { hasLocalSession } from "@/lib/local/auth";
 
 export async function getCurrentUserProfile(): Promise<Profile | null> {
+  if (isLocalBackend()) {
+    if (!(await hasLocalSession())) {
+      return null;
+    }
+
+    return loadProfile("local-admin");
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser();
 

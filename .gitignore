@@ -18,6 +18,10 @@ coverage/
 .next-dev.*.log
 *.tsbuildinfo
 
+# local runtime state
+/data/
+cleaning-duty-app/data/
+
 # OS/editor
 .DS_Store
 Thumbs.db

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { getAppUrl } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
 import { writeAuditLog } from "@/lib/domain/audit";
 import { createNotificationIfMissing, markNotificationFailed, markNotificationSent } from "@/lib/domain/notifications";
 import { resolveNextAssignee } from "@/lib/domain/rotation";
@@ -61,7 +61,7 @@ export async function sendSaturdayCleaningReminderIfNeeded(
   try {
     const template = cleaningReminderTemplate({
       name: assignee.full_name,
-      dutyUrl: `${getAppUrl()}/duty/${period.id}`,
+      dutyUrl: `${readRuntimeConfig().appUrl}/duty/${period.id}`,
     });
     await sendEmail({ to: assignee.email, ...template });
     await markNotificationSent(supabase, notification.id);
@@ -154,7 +154,7 @@ export async function sendSundayHandoverReminderIfNeeded(
     const template = handoverReminderTemplate({
       name: nextAssignee.full_name,
       previousName: assignee.full_name,
-      handoverUrl: `${getAppUrl()}/handover/${period.id}`,
+      handoverUrl: `${readRuntimeConfig().appUrl}/handover/${period.id}`,
     });
     await sendEmail({ to: nextAssignee.email, ...template });
     await markNotificationSent(supabase, notification.id);

@@ -2,46 +2,17 @@ import Link from "next/link";
 
 import { ScheduleTools } from "@/components/admin/admin-forms";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listDuties, listFailedNotifications, listProfiles } from "@/lib/data/store";
 import type { DutyPeriod, Notification, Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminSchedulePage() {
-  const supabase = createSupabaseAdminClient();
-  const [
-    { data: duties, error: dutiesError },
-    { data: profiles, error: profilesError },
-    { data: notifications, error: notificationsError },
-  ] = await Promise.all([
-    supabase
-      .from("duty_periods")
-      .select("*")
-      .order("week_start", { ascending: false })
-      .limit(52),
-    supabase.from("profiles").select("*").order("rotation_order", { ascending: true }),
-    supabase
-      .from("notifications")
-      .select("*")
-      .eq("status", "failed")
-      .order("created_at", { ascending: false }),
-  ]);
-
-  if (dutiesError) {
-    throw dutiesError;
-  }
-
-  if (profilesError) {
-    throw profilesError;
-  }
-
-  if (notificationsError) {
-    throw notificationsError;
-  }
-
-  const dutyList = (duties ?? []) as DutyPeriod[];
-  const profileList = (profiles ?? []) as Profile[];
-  const notificationList = (notifications ?? []) as Notification[];
+  const [dutyList, profileList, notificationList] = (await Promise.all([
+    listDuties(52),
+    listProfiles(),
+    listFailedNotifications(),
+  ])) as [DutyPeriod[], Profile[], Notification[]];
   const profileMap = new Map(profileList.map((profile) => [profile.id, profile]));
 
   return (

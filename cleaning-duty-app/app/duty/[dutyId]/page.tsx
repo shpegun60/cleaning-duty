@@ -4,8 +4,13 @@ import { DutyChecklist } from "@/components/duty/duty-checklist";
 import { AppShell } from "@/components/layout/app-shell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
-import { loadDutyPeriod, loadProfile } from "@/lib/domain/loaders";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  listRooms,
+  listTaskChecks,
+  listTasks,
+  loadDutyPeriod,
+  loadProfile,
+} from "@/lib/data/store";
 import type { Room, Task, TaskCheck } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -17,32 +22,23 @@ export default async function DutyPage({
 }) {
   const user = await requireUserPage();
   const { dutyId } = await params;
-  const supabase = createSupabaseAdminClient();
-  const duty = await loadDutyPeriod(supabase, dutyId);
+  const duty = await loadDutyPeriod(dutyId);
 
   if (duty.assignee_id !== user.id && user.role !== "admin") {
     notFound();
   }
 
-  const [{ data: rooms }, { data: tasks }, { data: checks }] = await Promise.all([
-    supabase
-      .from("rooms")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true }),
-    supabase
-      .from("tasks")
-      .select("*")
-      .eq("is_active", true)
-      .order("sort_order", { ascending: true }),
-    supabase.from("task_checks").select("*").eq("duty_period_id", duty.id),
+  const [rooms, tasks, checks] = await Promise.all([
+    listRooms({ activeOnly: true }),
+    listTasks({ activeOnly: true }),
+    listTaskChecks(duty.id),
   ]);
-  const assignee = await loadProfile(supabase, duty.assignee_id);
+  const assignee = await loadProfile(duty.assignee_id);
   const checked = new Map(
-    ((checks ?? []) as TaskCheck[]).map((check) => [check.task_id, check.is_checked]),
+    (checks as TaskCheck[]).map((check) => [check.task_id, check.is_checked]),
   );
-  const activeRooms = (rooms ?? []) as Room[];
-  const activeTasks = (tasks ?? []) as Task[];
+  const activeRooms = rooms as Room[];
+  const activeTasks = tasks as Task[];
   const groups = activeRooms.map((room) => ({
     id: room.id,
     name: room.name,

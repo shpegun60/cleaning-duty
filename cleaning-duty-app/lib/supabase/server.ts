@@ -1,12 +1,17 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-import { getSupabasePublishableKey, getSupabaseUrl } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
+  const config = readRuntimeConfig();
 
-  return createServerClient(getSupabaseUrl(), getSupabasePublishableKey(), {
+  if (!config.supabaseUrl || !config.supabasePublishableKey) {
+    throw new Error("Missing Supabase public configuration");
+  }
+
+  return createServerClient(config.supabaseUrl, config.supabasePublishableKey, {
     cookies: {
       getAll() {
         return cookieStore.getAll();

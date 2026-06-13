@@ -1,15 +1,18 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { markNotificationFailed, markNotificationSent } from "@/lib/domain/notifications";
-import { writeAuditLog } from "@/lib/domain/audit";
-import { loadDutyPeriod, loadProfile } from "@/lib/domain/loaders";
-import { getAppUrl } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
+import {
+  loadDutyPeriod,
+  loadNotification,
+  loadProfile,
+  markNotificationFailed,
+  markNotificationSent,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { adminChangedAssigneeTemplate, cleaningReminderTemplate, handoverRejectedTemplate, handoverReminderTemplate, recheckRequestedTemplate } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send-email";
 import { badRequest, conflict, handleRouteError, notFound } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Notification } from "@/lib/types";
 
 const RetryNotificationSchema = z.object({
   notificationId: z.string().uuid(),
@@ -19,26 +22,20 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = RetryNotificationSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const { data, error } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("id", body.notificationId)
-      .single();
-
-    if (error || !data) {
+    let notification;
+    try {
+      notification = await loadNotification(body.notificationId);
+    } catch {
       throw notFound("Notification not found");
     }
-
-    const notification = data as Notification;
 
     if (notification.status !== "failed") {
       throw conflict("Only failed notifications can be retried");
     }
 
-    const recipient = await loadProfile(supabase, notification.recipient_id);
+    const recipient = await loadProfile(notification.recipient_id);
     const duty = notification.duty_period_id
-      ? await loadDutyPeriod(supabase, notification.duty_period_id)
+      ? await loadDutyPeriod(notification.duty_period_id)
       : null;
 
     if (!duty) {
@@ -50,32 +47,32 @@ export async function POST(request: Request) {
     if (notification.type === "saturday_cleaning_reminder") {
       template = cleaningReminderTemplate({
         name: recipient.full_name,
-        dutyUrl: `${getAppUrl()}/duty/${duty.id}`,
+        dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
       });
     } else if (notification.type === "sunday_handover_reminder") {
-      const previous = await loadProfile(supabase, duty.assignee_id);
+      const previous = await loadProfile(duty.assignee_id);
       template = handoverReminderTemplate({
         name: recipient.full_name,
         previousName: previous.full_name,
-        handoverUrl: `${getAppUrl()}/handover/${duty.id}`,
+        handoverUrl: `${readRuntimeConfig().appUrl}/handover/${duty.id}`,
       });
     } else if (notification.type === "handover_rejected") {
       template = handoverRejectedTemplate({
         name: recipient.full_name,
         comment: duty.reject_comment ?? "Без коментаря",
-        dutyUrl: `${getAppUrl()}/duty/${duty.id}`,
+        dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
       });
     } else if (notification.type === "recheck_requested") {
-      const previous = await loadProfile(supabase, duty.assignee_id);
+      const previous = await loadProfile(duty.assignee_id);
       template = recheckRequestedTemplate({
         name: recipient.full_name,
         previousName: previous.full_name,
-        handoverUrl: `${getAppUrl()}/handover/${duty.id}`,
+        handoverUrl: `${readRuntimeConfig().appUrl}/handover/${duty.id}`,
       });
     } else if (notification.type === "admin_changed_assignee") {
       template = adminChangedAssigneeTemplate({
         name: recipient.full_name,
-        dutyUrl: `${getAppUrl()}/duty/${duty.id}`,
+        dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
       });
     } else {
       throw badRequest("Unsupported notification type for retry");
@@ -83,13 +80,13 @@ export async function POST(request: Request) {
 
     try {
       await sendEmail({ to: recipient.email, ...template });
-      await markNotificationSent(supabase, notification.id);
+      await markNotificationSent(notification.id);
     } catch (errorCause) {
-      await markNotificationFailed(supabase, notification.id, errorCause);
+      await markNotificationFailed(notification.id, errorCause);
       throw errorCause;
     }
 
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "notification_retried",
       entityType: "notification",

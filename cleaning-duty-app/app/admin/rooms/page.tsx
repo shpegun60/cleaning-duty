@@ -1,21 +1,11 @@
 import { RoomForm } from "@/components/admin/admin-forms";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listRooms } from "@/lib/data/store";
 import type { Room } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminRoomsPage() {
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("rooms")
-    .select("*")
-    .order("sort_order", { ascending: true });
-
-  if (error) {
-    throw error;
-  }
-
-  const rooms = (data ?? []) as Room[];
+  const rooms = (await listRooms()) as Room[];
 
   return (
     <div className="grid gap-6">

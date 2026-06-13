@@ -1,15 +1,20 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { createNotificationIfMissing, markNotificationFailed, markNotificationSent } from "@/lib/domain/notifications";
-import { writeAuditLog } from "@/lib/domain/audit";
-import { loadDutyPeriod, loadProfile } from "@/lib/domain/loaders";
-import { resolveNextAssignee } from "@/lib/domain/rotation";
-import { getAppUrl } from "@/lib/env";
+import { readRuntimeConfig } from "@/lib/config/runtime";
+import {
+  createNotificationIfMissing,
+  loadDutyPeriod,
+  loadProfile,
+  markNotificationFailed,
+  markNotificationSent,
+  resolveNextAssignee,
+  updateDutyPeriod,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { adminChangedAssigneeTemplate } from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send-email";
 import { conflict, handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const ChangeAssigneeSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -21,34 +26,25 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = ChangeAssigneeSchema.parse(await request.json());
-    const supabase = createSupabaseAdminClient();
-    const duty = await loadDutyPeriod(supabase, body.dutyPeriodId);
+    const duty = await loadDutyPeriod(body.dutyPeriodId);
 
     if (["accepted", "cancelled", "force_closed"].includes(duty.status)) {
       throw conflict("Final duty cannot be reassigned");
     }
 
-    const newAssignee = await loadProfile(supabase, body.newAssigneeId);
+    const newAssignee = await loadProfile(body.newAssigneeId);
 
     if (!newAssignee.is_active) {
       throw conflict("New assignee must be active");
     }
 
-    const nextAssignee = await resolveNextAssignee(supabase, newAssignee.id);
-    const { error } = await supabase
-      .from("duty_periods")
-      .update({
-        assignee_id: newAssignee.id,
-        next_assignee_id: nextAssignee.id,
-      })
-      .eq("id", duty.id);
-
-    if (error) {
-      throw error;
-    }
+    const nextAssignee = await resolveNextAssignee(newAssignee.id);
+    await updateDutyPeriod(duty.id, {
+      assignee_id: newAssignee.id,
+      next_assignee_id: nextAssignee.id,
+    });
 
     const notification = await createNotificationIfMissing({
-      supabase,
       dutyPeriodId: duty.id,
       recipientId: newAssignee.id,
       type: "admin_changed_assignee",
@@ -59,16 +55,16 @@ export async function POST(request: Request) {
       try {
         const template = adminChangedAssigneeTemplate({
           name: newAssignee.full_name,
-          dutyUrl: `${getAppUrl()}/duty/${duty.id}`,
+          dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
         });
         await sendEmail({ to: newAssignee.email, ...template });
-        await markNotificationSent(supabase, notification.id);
+        await markNotificationSent(notification.id);
       } catch (errorCause) {
-        await markNotificationFailed(supabase, notification.id, errorCause);
+        await markNotificationFailed(notification.id, errorCause);
       }
     }
 
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "assignee_changed",
       entityType: "duty_period",

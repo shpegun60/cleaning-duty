@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { writeAuditLog } from "@/lib/domain/audit";
+import { updateProfile, loadProfile, writeAuditLog } from "@/lib/data/store";
 import { badRequest, handleRouteError } from "@/lib/http";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const ReorderRotationSchema = z.object({
   items: z.array(
@@ -27,20 +26,18 @@ export async function POST(request: Request) {
       throw badRequest("Rotation order values must be unique");
     }
 
-    const supabase = createSupabaseAdminClient();
-
     for (const item of body.items) {
-      const { error } = await supabase
-        .from("profiles")
-        .update({ rotation_order: item.rotationOrder })
-        .eq("id", item.userId);
-
-      if (error) {
-        throw error;
-      }
+      const profile = await loadProfile(item.userId);
+      await updateProfile({
+        userId: profile.id,
+        fullName: profile.full_name,
+        role: profile.role,
+        rotationOrder: item.rotationOrder,
+        isActive: profile.is_active,
+      });
     }
 
-    await writeAuditLog(supabase, {
+    await writeAuditLog({
       actorId: admin.id,
       action: "rotation_reordered",
       entityType: "profile",

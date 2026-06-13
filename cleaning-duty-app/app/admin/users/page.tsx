@@ -1,21 +1,11 @@
 import { InviteUserForm, UserEditForm } from "@/components/admin/admin-forms";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listProfiles } from "@/lib/data/store";
 import type { Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .order("rotation_order", { ascending: true, nullsFirst: false });
-
-  if (error) {
-    throw error;
-  }
-
-  const profiles = (data ?? []) as Profile[];
+  const profiles = (await listProfiles()) as Profile[];
 
   return (
     <div className="grid gap-6">
