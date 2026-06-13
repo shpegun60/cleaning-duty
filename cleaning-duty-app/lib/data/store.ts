@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { readRuntimeConfig } from "@/lib/config/runtime";
 import { weekEndFromStart } from "@/lib/domain/dates";
+import { badRequest, conflict, forbidden } from "@/lib/http";
 import { getLocalDb, mapBooleanFields, nowIso } from "@/lib/local/sqlite";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import type {
@@ -69,25 +70,88 @@ async function sbList<T>(
 
 export async function listProfiles() {
   if (!isLocalBackend()) {
-    return sbList<Profile>((supabase) =>
+    const profiles = await sbList<Profile>((supabase) =>
       supabase
         .from("profiles")
         .select("*")
-        .order("rotation_order", { ascending: true, nullsFirst: false }),
+        .order("full_name", { ascending: true }),
     );
+
+    return sortProfilesForAdmin(profiles);
   }
 
-  return getLocalDb()
+  const profiles = getLocalDb()
     .prepare("select * from profiles order by rotation_order is null, rotation_order asc, full_name asc")
     .all()
     .map((row) => asProfile(row as Record<string, unknown>));
+
+  return sortProfilesForAdmin(profiles);
 }
 
 export async function listActiveRotationProfiles() {
   const profiles = await listProfiles();
   return profiles
-    .filter((profile) => profile.is_active && profile.rotation_order !== null)
+    .filter(
+      (profile) =>
+        profile.role === "worker" &&
+        profile.is_active &&
+        profile.rotation_order !== null &&
+        profile.rotation_order >= 1,
+    )
     .sort((a, b) => Number(a.rotation_order) - Number(b.rotation_order));
+}
+
+function sortProfilesForAdmin(profiles: Profile[]) {
+  return [...profiles].sort((a, b) => {
+    if (a.role !== b.role) {
+      return a.role === "admin" ? -1 : 1;
+    }
+
+    if (a.role === "admin") {
+      return a.full_name.localeCompare(b.full_name);
+    }
+
+    const aOrder = a.rotation_order ?? Number.POSITIVE_INFINITY;
+    const bOrder = b.rotation_order ?? Number.POSITIVE_INFINITY;
+
+    if (aOrder !== bOrder) {
+      return aOrder - bOrder;
+    }
+
+    return a.full_name.localeCompare(b.full_name);
+  });
+}
+
+async function assertRotationOrderAvailable(params: {
+  userId?: string;
+  role: "admin" | "worker";
+  rotationOrder: number | null;
+  isActive?: boolean;
+}) {
+  if (params.role !== "worker" || params.isActive === false || params.rotationOrder === null) {
+    return;
+  }
+
+  if (!Number.isInteger(params.rotationOrder) || params.rotationOrder < 1) {
+    throw badRequest("Rotation order must be empty or a positive number starting from 1");
+  }
+
+  const profiles = await listProfiles();
+  const existing = profiles.find(
+    (profile) =>
+      profile.id !== params.userId &&
+      profile.role === "worker" &&
+      profile.is_active &&
+      profile.rotation_order === params.rotationOrder,
+  );
+
+  if (existing) {
+    throw conflict(`Rotation order ${params.rotationOrder} is already used by ${existing.full_name}`);
+  }
+}
+
+function normalizedRotationOrder(role: "admin" | "worker", rotationOrder: number | null) {
+  return role === "worker" ? rotationOrder : null;
 }
 
 export async function resolveNextAssignee(currentAssigneeId: string) {
@@ -130,6 +194,13 @@ export async function createProfile(params: {
   role: "admin" | "worker";
   rotationOrder: number | null;
 }) {
+  const rotationOrder = normalizedRotationOrder(params.role, params.rotationOrder);
+  await assertRotationOrderAvailable({
+    role: params.role,
+    rotationOrder,
+    isActive: true,
+  });
+
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { data: inviteData, error: inviteError } =
@@ -142,7 +213,7 @@ export async function createProfile(params: {
       email: params.email,
       full_name: params.fullName,
       role: params.role,
-      rotation_order: params.rotationOrder,
+      rotation_order: rotationOrder,
       is_active: true,
     });
     if (error) throw error;
@@ -156,7 +227,7 @@ export async function createProfile(params: {
        (id, email, full_name, role, rotation_order, is_active, updated_at)
        values (?, ?, ?, ?, ?, 1, ?)`,
     )
-    .run(id, params.email, params.fullName, params.role, params.rotationOrder, nowIso());
+    .run(id, params.email, params.fullName, params.role, rotationOrder, nowIso());
   return id;
 }
 
@@ -167,6 +238,20 @@ export async function updateProfile(params: {
   rotationOrder: number | null;
   isActive: boolean;
 }) {
+  const existing = await loadProfile(params.userId);
+
+  if (existing.id === "local-admin" && (params.role !== "admin" || !params.isActive)) {
+    throw forbidden("Local admin cannot be demoted or deactivated");
+  }
+
+  const rotationOrder = normalizedRotationOrder(params.role, params.rotationOrder);
+  await assertRotationOrderAvailable({
+    userId: params.userId,
+    role: params.role,
+    rotationOrder,
+    isActive: params.isActive,
+  });
+
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { error } = await supabase
@@ -174,7 +259,7 @@ export async function updateProfile(params: {
       .update({
         full_name: params.fullName,
         role: params.role,
-        rotation_order: params.rotationOrder,
+        rotation_order: rotationOrder,
         is_active: params.isActive,
       })
       .eq("id", params.userId);
@@ -191,11 +276,87 @@ export async function updateProfile(params: {
     .run(
       params.fullName,
       params.role,
-      params.rotationOrder,
+      rotationOrder,
       params.isActive ? 1 : 0,
       nowIso(),
       params.userId,
     );
+}
+
+export async function removeProfile(userId: string) {
+  const profile = await loadProfile(userId);
+
+  if (profile.role === "admin") {
+    throw forbidden("Admin users cannot be deleted");
+  }
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const hasHistory = await profileHasHistory(userId);
+
+    if (hasHistory) {
+      await updateProfile({
+        userId,
+        fullName: profile.full_name,
+        role: profile.role,
+        rotationOrder: null,
+        isActive: false,
+      });
+      return "deactivated" as const;
+    }
+
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) throw error;
+    return "deleted" as const;
+  }
+
+  if (await profileHasHistory(userId)) {
+    getLocalDb()
+      .prepare("update profiles set is_active = 0, rotation_order = null, updated_at = ? where id = ?")
+      .run(nowIso(), userId);
+    return "deactivated" as const;
+  }
+
+  getLocalDb().prepare("delete from profiles where id = ?").run(userId);
+  return "deleted" as const;
+}
+
+async function profileHasHistory(userId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const checks = await Promise.all([
+      supabase.from("duty_periods").select("id", { count: "exact", head: true }).or(`assignee_id.eq.${userId},next_assignee_id.eq.${userId},accepted_by.eq.${userId},rejected_by.eq.${userId},created_by.eq.${userId}`),
+      supabase.from("task_checks").select("id", { count: "exact", head: true }).eq("checked_by", userId),
+      supabase.from("room_acceptances").select("id", { count: "exact", head: true }).eq("accepted_by", userId),
+      supabase.from("notifications").select("id", { count: "exact", head: true }).eq("recipient_id", userId),
+      supabase.from("audit_log").select("id", { count: "exact", head: true }).eq("actor_id", userId),
+    ]);
+
+    for (const result of checks) {
+      if (result.error) throw result.error;
+      if ((result.count ?? 0) > 0) return true;
+    }
+
+    return false;
+  }
+
+  const db = getLocalDb();
+  const dutyCount = db
+    .prepare(
+      `select count(*) as count
+       from duty_periods
+       where assignee_id = ? or next_assignee_id = ? or accepted_by = ?
+          or rejected_by = ? or created_by = ?`,
+    )
+    .get(userId, userId, userId, userId, userId) as { count: number };
+  const taskCount = db.prepare("select count(*) as count from task_checks where checked_by = ?").get(userId) as { count: number };
+  const roomCount = db.prepare("select count(*) as count from room_acceptances where accepted_by = ?").get(userId) as { count: number };
+  const notificationCount = db.prepare("select count(*) as count from notifications where recipient_id = ?").get(userId) as { count: number };
+  const auditCount = db.prepare("select count(*) as count from audit_log where actor_id = ?").get(userId) as { count: number };
+
+  return [dutyCount, taskCount, roomCount, notificationCount, auditCount].some(
+    (result) => result.count > 0,
+  );
 }
 
 export async function listRooms(options: { activeOnly?: boolean } = {}) {

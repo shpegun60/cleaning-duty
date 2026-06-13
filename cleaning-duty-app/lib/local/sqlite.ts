@@ -155,7 +155,27 @@ function initializeLocalDb(db: DatabaseSync) {
     `insert or ignore into profiles
       (id, email, full_name, role, rotation_order, is_active)
      values (?, ?, ?, ?, ?, ?)`,
-  ).run("local-admin", "admin@local", "Local Admin", "admin", 1, booleanToInt(true));
+  ).run("local-admin", "admin@local", "Local Admin", "admin", null, booleanToInt(true));
+
+  db.prepare("update profiles set rotation_order = null where role <> 'worker'").run();
+  db.prepare("update profiles set rotation_order = null where rotation_order is not null and rotation_order < 1").run();
+
+  const orderedWorkers = db
+    .prepare(
+      `select id, rotation_order
+       from profiles
+       where role = 'worker' and is_active = 1 and rotation_order is not null
+       order by rotation_order asc, created_at asc, full_name asc`,
+    )
+    .all() as Array<{ id: string; rotation_order: number }>;
+  const usedOrders = new Set<number>();
+  for (const worker of orderedWorkers) {
+    if (usedOrders.has(worker.rotation_order)) {
+      db.prepare("update profiles set rotation_order = null where id = ?").run(worker.id);
+    } else {
+      usedOrders.add(worker.rotation_order);
+    }
+  }
 
   db.prepare(
     `insert or ignore into app_settings

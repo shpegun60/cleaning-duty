@@ -33,6 +33,7 @@ function useApiForm() {
       await callback();
       setMessage("Збережено");
       router.refresh();
+      setTimeout(() => router.refresh(), 100);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Помилка");
     }
@@ -74,7 +75,7 @@ export function InviteUserForm() {
           <option value="worker">worker</option>
           <option value="admin">admin</option>
         </select>
-        <input className="h-10 rounded-md border px-3" name="rotationOrder" placeholder="Rotation order" type="number" />
+        <input className="h-10 rounded-md border px-3" name="rotationOrder" placeholder="Rotation order" type="number" min={1} />
       </div>
       <Button type="submit">Запросити</Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
@@ -84,6 +85,8 @@ export function InviteUserForm() {
 
 export function UserEditForm({ profile }: { profile: Profile }) {
   const { message, run } = useApiForm();
+  const isAdmin = profile.role === "admin";
+  const isLocalAdmin = profile.id === "local-admin";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -100,6 +103,18 @@ export function UserEditForm({ profile }: { profile: Profile }) {
     });
   }
 
+  async function onDelete() {
+    if (!window.confirm(`Видалити ${profile.full_name}?`)) {
+      return;
+    }
+
+    await run(async () => {
+      await postJson("/api/admin/users/delete", {
+        userId: profile.id,
+      });
+    });
+  }
+
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <div>
@@ -108,17 +123,34 @@ export function UserEditForm({ profile }: { profile: Profile }) {
       </div>
       <input className="h-10 rounded-md border px-3" name="fullName" defaultValue={profile.full_name} required />
       <div className="grid gap-3 sm:grid-cols-3">
-        <select className="h-10 rounded-md border px-3" name="role" defaultValue={profile.role}>
+        {isLocalAdmin ? <input type="hidden" name="role" value="admin" /> : null}
+        <select className="h-10 rounded-md border px-3" name="role" defaultValue={profile.role} disabled={isLocalAdmin}>
           <option value="worker">worker</option>
           <option value="admin">admin</option>
         </select>
-        <input className="h-10 rounded-md border px-3" name="rotationOrder" defaultValue={profile.rotation_order ?? ""} type="number" />
+        <input
+          className="h-10 rounded-md border px-3"
+          name="rotationOrder"
+          defaultValue={isAdmin ? "" : profile.rotation_order ?? ""}
+          type="number"
+          min={1}
+          disabled={isAdmin}
+          placeholder={isAdmin ? "Admin is not in rotation" : "Rotation order"}
+        />
         <label className="flex items-center gap-2 text-sm">
-          <input name="isActive" type="checkbox" defaultChecked={profile.is_active} />
+          {isLocalAdmin ? <input type="hidden" name="isActive" value="on" /> : null}
+          <input name="isActive" type="checkbox" defaultChecked={profile.is_active} disabled={isLocalAdmin} />
           active
         </label>
       </div>
-      <Button type="submit" variant="secondary">Зберегти</Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" variant="secondary">Зберегти</Button>
+        {!isAdmin ? (
+          <Button type="button" variant="danger" onClick={onDelete}>
+            Видалити
+          </Button>
+        ) : null}
+      </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
@@ -235,7 +267,7 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
             <span className="block font-semibold">{profile.full_name}</span>
             <span className="text-sm text-stone-600">{profile.email}</span>
           </span>
-          <input className="h-10 rounded-md border px-3" name={profile.id} defaultValue={profile.rotation_order ?? ""} type="number" />
+          <input className="h-10 rounded-md border px-3" name={profile.id} defaultValue={profile.rotation_order ?? ""} type="number" min={1} />
         </label>
       ))}
       <Button type="submit">Зберегти порядок</Button>

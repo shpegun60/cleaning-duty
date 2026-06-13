@@ -6,8 +6,10 @@ export async function getRotationUsers(supabase: SupabaseClient) {
   const { data, error } = await supabase
     .from("profiles")
     .select("id,email,full_name,role,rotation_order,is_active")
+    .eq("role", "worker")
     .eq("is_active", true)
     .not("rotation_order", "is", null)
+    .gte("rotation_order", 1)
     .order("rotation_order", { ascending: true });
 
   if (error) {

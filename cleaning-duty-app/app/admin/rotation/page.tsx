@@ -5,7 +5,9 @@ import type { Profile } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 export default async function AdminRotationPage() {
-  const profiles = (await listProfiles()).filter((profile) => profile.is_active);
+  const profiles = (await listProfiles()).filter(
+    (profile) => profile.role === "worker" && profile.is_active,
+  );
 
   return (
     <div className="grid gap-6">

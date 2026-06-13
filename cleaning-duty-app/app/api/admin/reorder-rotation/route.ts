@@ -8,7 +8,7 @@ const ReorderRotationSchema = z.object({
   items: z.array(
     z.object({
       userId: z.string().uuid(),
-      rotationOrder: z.number().int().nullable(),
+      rotationOrder: z.number().int().min(1).nullable(),
     }),
   ),
 });
