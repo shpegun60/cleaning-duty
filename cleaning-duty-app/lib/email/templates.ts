@@ -80,3 +80,21 @@ export function adminChangedAssigneeTemplate(params: {
     `,
   };
 }
+
+export function userInvitedTemplate(params: {
+  name: string;
+  loginUrl: string;
+  email: string;
+  password: string;
+}) {
+  return {
+    subject: "Тебе додано до Cleaning Duty",
+    html: `
+      <p>Привіт, ${escapeHtml(params.name)}.</p>
+      <p>Тебе додано до системи чергувань Cleaning Duty.</p>
+      <p><strong>Логін:</strong> ${escapeHtml(params.email)}</p>
+      <p><strong>Пароль:</strong> ${escapeHtml(params.password)}</p>
+      <p><a href="${escapeHtml(params.loginUrl)}">Відкрити сторінку входу</a></p>
+    `,
+  };
+}

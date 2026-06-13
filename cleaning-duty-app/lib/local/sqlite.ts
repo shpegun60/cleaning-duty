@@ -2,6 +2,7 @@ import { mkdirSync } from "fs";
 import { join } from "path";
 import { DatabaseSync } from "node:sqlite";
 
+import { generateTemporaryPassword, hashPassword } from "@/lib/auth/passwords";
 import { getDataDir } from "@/lib/config/runtime";
 
 let database: DatabaseSync | null = null;
@@ -41,6 +42,13 @@ function initializeLocalDb(db: DatabaseSync) {
       rotation_order integer,
       is_active integer not null default 1,
       created_at text not null default current_timestamp,
+      updated_at text not null default current_timestamp
+    );
+
+    create table if not exists local_user_credentials (
+      profile_id text primary key references profiles(id) on delete cascade,
+      password_hash text not null,
+      password_plaintext text,
       updated_at text not null default current_timestamp
     );
 
@@ -172,6 +180,7 @@ function initializeLocalDb(db: DatabaseSync) {
 
   ensureColumn(db, "app_settings", "rotation_period_unit", "text not null default 'week'");
   ensureColumn(db, "app_settings", "rotation_period_count", "integer not null default 1");
+  ensureColumn(db, "local_user_credentials", "password_plaintext", "text");
 
   db.prepare(
     `insert or ignore into profiles
@@ -197,6 +206,25 @@ function initializeLocalDb(db: DatabaseSync) {
     } else {
       usedOrders.add(worker.rotation_order);
     }
+  }
+
+  const profilesWithoutCredentials = db
+    .prepare(
+      `select p.id
+       from profiles p
+       left join local_user_credentials c on c.profile_id = p.id
+       where p.id <> 'local-admin' and c.profile_id is null`,
+    )
+    .all() as Array<{ id: string }>;
+  const insertCredential = db.prepare(
+    `insert into local_user_credentials
+      (profile_id, password_hash, password_plaintext, updated_at)
+     values (?, ?, ?, ?)`,
+  );
+
+  for (const profile of profilesWithoutCredentials) {
+    const password = generateTemporaryPassword();
+    insertCredential.run(profile.id, hashPassword(password), password, nowIso());
   }
 
   db.prepare(

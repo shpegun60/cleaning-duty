@@ -120,6 +120,15 @@ export function UserEditForm({ profile }: { profile: Profile }) {
         <p className="font-semibold">{profile.email}</p>
         <p className="text-xs text-stone-500">{profile.id}</p>
       </div>
+      <label className="grid gap-1 text-sm">
+        Пароль
+        <input
+          className="h-10 rounded-md border bg-stone-50 px-3 font-mono text-sm"
+          readOnly
+          value={profile.login_password ?? ""}
+          placeholder="не задано"
+        />
+      </label>
       <input className="h-10 rounded-md border px-3" name="fullName" defaultValue={profile.full_name} required />
       <div className="grid gap-3 sm:grid-cols-3">
         {isLocalAdmin ? <input type="hidden" name="role" value="admin" /> : null}

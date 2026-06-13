@@ -4,13 +4,13 @@ import { SetupForm } from "@/components/setup/setup-form";
 import { SetupLoginForm } from "@/components/setup/setup-login-form";
 import { publicRuntimeConfig } from "@/lib/config/runtime";
 import { getLocalAppSettingsDirect } from "@/lib/data/store";
-import { hasLocalSession } from "@/lib/local/auth";
+import { hasLocalAdminSession } from "@/lib/local/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SetupPage() {
   const config = publicRuntimeConfig();
-  const loggedIn = await hasLocalSession();
+  const loggedIn = await hasLocalAdminSession();
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
+import { generateTemporaryPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
 import {
   loadDutyPeriod,
@@ -8,9 +9,17 @@ import {
   loadProfile,
   markNotificationFailed,
   markNotificationSent,
+  updateProfilePassword,
   writeAuditLog,
 } from "@/lib/data/store";
-import { adminChangedAssigneeTemplate, cleaningReminderTemplate, handoverRejectedTemplate, handoverReminderTemplate, recheckRequestedTemplate } from "@/lib/email/templates";
+import {
+  adminChangedAssigneeTemplate,
+  cleaningReminderTemplate,
+  handoverRejectedTemplate,
+  handoverReminderTemplate,
+  recheckRequestedTemplate,
+  userInvitedTemplate,
+} from "@/lib/email/templates";
 import { sendEmail } from "@/lib/email/send-email";
 import { badRequest, conflict, handleRouteError, notFound } from "@/lib/http";
 
@@ -38,18 +47,16 @@ export async function POST(request: Request) {
       ? await loadDutyPeriod(notification.duty_period_id)
       : null;
 
-    if (!duty) {
-      throw badRequest("Notification has no duty period");
-    }
-
     let template: { subject: string; html: string };
 
     if (notification.type === "saturday_cleaning_reminder") {
+      if (!duty) throw badRequest("Notification has no duty period");
       template = cleaningReminderTemplate({
         name: recipient.full_name,
         dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
       });
     } else if (notification.type === "sunday_handover_reminder") {
+      if (!duty) throw badRequest("Notification has no duty period");
       const previous = await loadProfile(duty.assignee_id);
       template = handoverReminderTemplate({
         name: recipient.full_name,
@@ -57,12 +64,14 @@ export async function POST(request: Request) {
         handoverUrl: `${readRuntimeConfig().appUrl}/handover/${duty.id}`,
       });
     } else if (notification.type === "handover_rejected") {
+      if (!duty) throw badRequest("Notification has no duty period");
       template = handoverRejectedTemplate({
         name: recipient.full_name,
         comment: duty.reject_comment ?? "Без коментаря",
         dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
       });
     } else if (notification.type === "recheck_requested") {
+      if (!duty) throw badRequest("Notification has no duty period");
       const previous = await loadProfile(duty.assignee_id);
       template = recheckRequestedTemplate({
         name: recipient.full_name,
@@ -70,9 +79,19 @@ export async function POST(request: Request) {
         handoverUrl: `${readRuntimeConfig().appUrl}/handover/${duty.id}`,
       });
     } else if (notification.type === "admin_changed_assignee") {
+      if (!duty) throw badRequest("Notification has no duty period");
       template = adminChangedAssigneeTemplate({
         name: recipient.full_name,
         dutyUrl: `${readRuntimeConfig().appUrl}/duty/${duty.id}`,
+      });
+    } else if (notification.type === "user_invited") {
+      const password = generateTemporaryPassword();
+      await updateProfilePassword(recipient.id, password);
+      template = userInvitedTemplate({
+        name: recipient.full_name,
+        loginUrl: `${readRuntimeConfig().appUrl}/login`,
+        email: recipient.email,
+        password,
       });
     } else {
       throw badRequest("Unsupported notification type for retry");

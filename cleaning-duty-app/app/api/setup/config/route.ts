@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readRuntimeConfig, updateRuntimeConfig } from "@/lib/config/runtime";
 import { updateLocalAppSettingsDirect, writeLocalAuditLogDirect } from "@/lib/data/store";
 import { forbidden, handleRouteError } from "@/lib/http";
-import { hasLocalSession } from "@/lib/local/auth";
+import { hasLocalAdminSession } from "@/lib/local/auth";
 
 const SetupConfigSchema = z.object({
   backendMode: z.enum(["local", "supabase"]),
@@ -28,7 +28,7 @@ const SetupConfigSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    if (!(await hasLocalSession())) {
+    if (!(await hasLocalAdminSession())) {
       throw forbidden("Setup login required");
     }
 

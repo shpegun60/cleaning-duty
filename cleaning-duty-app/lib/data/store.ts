@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
 import { weekEndFromStart } from "@/lib/domain/dates";
 import { badRequest, conflict, forbidden } from "@/lib/http";
@@ -91,15 +92,45 @@ export async function listProfiles() {
         .order("full_name", { ascending: true }),
     );
 
-    return sortProfilesForAdmin(profiles);
+    return sortProfilesForAdmin(await withAdminVisiblePasswords(profiles));
   }
 
   const profiles = getLocalDb()
-    .prepare("select * from profiles order by rotation_order is null, rotation_order asc, full_name asc")
+    .prepare(
+      `select p.*, c.password_plaintext as login_password
+       from profiles p
+       left join local_user_credentials c on c.profile_id = p.id
+       order by p.rotation_order is null, p.rotation_order asc, p.full_name asc`,
+    )
     .all()
     .map((row) => asProfile(row as Record<string, unknown>));
 
   return sortProfilesForAdmin(profiles);
+}
+
+async function withAdminVisiblePasswords(profiles: Profile[]) {
+  if (profiles.length === 0) {
+    return profiles;
+  }
+
+  const supabase = getSupabaseForStore();
+  const { data, error } = await supabase
+    .from("admin_visible_user_passwords")
+    .select("profile_id,password_plaintext")
+    .in("profile_id", profiles.map((profile) => profile.id));
+  if (error) throw error;
+
+  const passwordMap = new Map(
+    (data ?? []).map((item) => [
+      item.profile_id as string,
+      item.password_plaintext as string,
+    ]),
+  );
+
+  return profiles.map((profile) => ({
+    ...profile,
+    login_password: passwordMap.get(profile.id) ?? null,
+  }));
 }
 
 export async function listActiveRotationProfiles() {
@@ -326,11 +357,35 @@ export async function loadProfile(id: string) {
   return asProfile(row as Record<string, unknown>);
 }
 
+export async function authenticateLocalProfile(email: string, password: string) {
+  if (!isLocalBackend()) {
+    return null;
+  }
+
+  const row = getLocalDb()
+    .prepare(
+      `select p.*, c.password_hash
+       from profiles p
+       join local_user_credentials c on c.profile_id = p.id
+       where lower(p.email) = lower(?) and p.is_active = 1`,
+    )
+    .get(email) as (Record<string, unknown> & { password_hash?: string }) | undefined;
+
+  if (!row || !verifyPassword(password, row.password_hash)) {
+    return null;
+  }
+
+  const profile = { ...row };
+  delete profile.password_hash;
+  return asProfile(profile);
+}
+
 export async function createProfile(params: {
   email: string;
   fullName: string;
   role: "admin" | "worker";
   rotationOrder: number | null;
+  initialPassword: string;
 }) {
   const rotationOrder = await createRotationOrder(params.role, params.rotationOrder);
   await assertRotationOrderAvailable({
@@ -341,11 +396,17 @@ export async function createProfile(params: {
 
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
-    const { data: inviteData, error: inviteError } =
-      await supabase.auth.admin.inviteUserByEmail(params.email);
-    if (inviteError) throw inviteError;
-    const userId = inviteData.user?.id;
-    if (!userId) throw new Error("Invite did not return user id");
+    const { data: userData, error: userError } = await supabase.auth.admin.createUser({
+      email: params.email,
+      password: params.initialPassword,
+      email_confirm: true,
+      user_metadata: {
+        full_name: params.fullName,
+      },
+    });
+    if (userError) throw userError;
+    const userId = userData.user?.id;
+    if (!userId) throw new Error("User creation did not return user id");
     const { error } = await supabase.from("profiles").upsert({
       id: userId,
       email: params.email,
@@ -355,18 +416,68 @@ export async function createProfile(params: {
       is_active: true,
     });
     if (error) throw error;
+    await upsertAdminVisiblePassword(userId, params.initialPassword);
     return userId;
   }
 
   const id = randomUUID();
-  getLocalDb()
-    .prepare(
+  const db = getLocalDb();
+  const now = nowIso();
+  db.exec("begin");
+  try {
+    db.prepare(
       `insert into profiles
        (id, email, full_name, role, rotation_order, is_active, updated_at)
        values (?, ?, ?, ?, ?, 1, ?)`,
-    )
-    .run(id, params.email, params.fullName, params.role, rotationOrder, nowIso());
+    ).run(id, params.email, params.fullName, params.role, rotationOrder, now);
+    db.prepare(
+      `insert into local_user_credentials
+       (profile_id, password_hash, password_plaintext, updated_at)
+       values (?, ?, ?, ?)`,
+    ).run(id, hashPassword(params.initialPassword), params.initialPassword, now);
+    db.exec("commit");
+  } catch (error) {
+    db.exec("rollback");
+    throw error;
+  }
+
   return id;
+}
+
+export async function updateProfilePassword(userId: string, password: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase.auth.admin.updateUserById(userId, {
+      password,
+    });
+    if (error) throw error;
+    await upsertAdminVisiblePassword(userId, password);
+    return;
+  }
+
+  await loadProfile(userId);
+  getLocalDb()
+    .prepare(
+      `insert into local_user_credentials
+       (profile_id, password_hash, password_plaintext, updated_at)
+       values (?, ?, ?, ?)
+       on conflict(profile_id) do update set
+         password_hash = excluded.password_hash,
+         password_plaintext = excluded.password_plaintext,
+         updated_at = excluded.updated_at`,
+    )
+    .run(userId, hashPassword(password), password, nowIso());
+}
+
+async function upsertAdminVisiblePassword(userId: string, password: string) {
+  const supabase = getSupabaseForStore();
+  const { error } = await supabase
+    .from("admin_visible_user_passwords")
+    .upsert({
+      profile_id: userId,
+      password_plaintext: password,
+    });
+  if (error) throw error;
 }
 
 export async function updateProfile(params: {

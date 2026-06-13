@@ -52,15 +52,19 @@ export function LoginForm({
       }
 
       const email = String(form.get("email") ?? "");
+      const password = String(form.get("password") ?? "");
       const supabase = createClient(supabaseUrl, supabasePublishableKey);
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+        password,
       });
 
-      setMessage(error ? error.message : "Перевір email і відкрий magic link.");
+      if (error) {
+        throw error;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Помилка конфігурації");
     } finally {
@@ -73,7 +77,7 @@ export function LoginForm({
       {backendMode === "local" ? (
         <>
           <label className="grid gap-2 text-sm font-medium">
-            Login
+            Email або setup login
             <input
               className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
               name="username"
@@ -95,23 +99,35 @@ export function LoginForm({
           </label>
         </>
       ) : (
-        <label className="grid gap-2 text-sm font-medium">
-          Email
-          <input
-            className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-          />
-        </label>
+        <>
+          <label className="grid gap-2 text-sm font-medium">
+            Email
+            <input
+              className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">
+            Password
+            <input
+              className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
+              name="password"
+              type="password"
+              required
+              autoComplete="current-password"
+            />
+          </label>
+        </>
       )}
       <Button disabled={isSubmitting} type="submit">
         {isSubmitting
           ? "Вхід..."
           : backendMode === "local"
             ? "Увійти локально"
-            : "Увійти через email"}
+            : "Увійти"}
       </Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>

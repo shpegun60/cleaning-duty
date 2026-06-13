@@ -17,7 +17,8 @@ export type NotificationType =
   | "handover_rejected"
   | "handover_accepted"
   | "recheck_requested"
-  | "admin_changed_assignee";
+  | "admin_changed_assignee"
+  | "user_invited";
 
 export type NotificationStatus = "pending" | "sent" | "failed" | "skipped";
 
@@ -32,6 +33,7 @@ export type Profile = {
   role: UserRole;
   rotation_order: number | null;
   is_active: boolean;
+  login_password?: string | null;
   created_at?: string;
   updated_at?: string;
 };
