@@ -292,15 +292,27 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await saveRotation(items);
+  }
 
+  async function saveRotation(rotationItems: Array<{ profile: Profile; rotationOrder: number }>) {
     await run(async () => {
       await postJson("/api/admin/reorder-rotation", {
-        items: items.map((item) => ({
+        items: rotationItems.map((item) => ({
           userId: item.profile.id,
           rotationOrder: item.rotationOrder,
         })),
       });
     });
+  }
+
+  async function onReorderNumbers() {
+    const normalizedItems = renumberRotationItems(items);
+    setRotationState({
+      profileKey,
+      items: normalizedItems,
+    });
+    await saveRotation(normalizedItems);
   }
 
   function moveProfileToOrder(userId: string, value: string) {
@@ -377,7 +389,12 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
           />
         </div>
       ))}
-      <Button type="submit" className="w-full">Зберегти порядок</Button>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Button type="button" variant="secondary" className="w-full" onClick={onReorderNumbers}>
+          Вирівняти номери
+        </Button>
+        <Button type="submit" className="w-full">Зберегти порядок</Button>
+      </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
