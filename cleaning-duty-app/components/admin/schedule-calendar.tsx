@@ -251,10 +251,10 @@ export function ScheduleCalendar({
                         Змінено
                       </span>
                     ) : null}
-                    <div className="mt-2 grid gap-1 sm:grid-cols-2">
+                    <div className="mt-2 grid gap-1">
                       <button
                         type="button"
-                        className="rounded-md border border-stone-300 bg-white px-2 py-1 text-xs font-semibold text-stone-900 hover:bg-stone-100"
+                        className="min-h-8 w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-stone-900 hover:bg-stone-100"
                         onClick={() => setEditingDutyId(duty.id)}
                         disabled={busy || activeRotationWorkers.length < 2}
                       >
@@ -263,7 +263,7 @@ export function ScheduleCalendar({
                       {latestChange ? (
                         <button
                           type="button"
-                          className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-50"
+                          className="min-h-8 w-full rounded-md border border-red-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-red-800 hover:bg-red-50"
                           onClick={() => revertChange(latestChange.id)}
                           disabled={busy}
                         >
