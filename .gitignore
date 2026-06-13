@@ -1,0 +1,24 @@
+# dependencies and build output
+node_modules/
+.next/
+out/
+build/
+coverage/
+
+# local toolchain downloaded for this machine
+.tools/
+
+# environment and secrets
+.env
+.env.*
+!.env.local.example
+
+# logs and temp files
+*.log
+.next-dev.*.log
+*.tsbuildinfo
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
