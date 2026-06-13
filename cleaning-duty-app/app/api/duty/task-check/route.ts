@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth/guards";
 import {
   activateDutyIfCurrentScheduled,
+  isDateWithinDutyPeriod,
   loadActiveTask,
   loadDutyPeriod,
   upsertTaskCheck,
@@ -21,16 +22,22 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = TaskCheckSchema.parse(await request.json());
+    const localDate = getLocalSchedulerState().dateKey;
     const duty = await activateDutyIfCurrentScheduled(
       await loadDutyPeriod(body.dutyPeriodId),
-      getLocalSchedulerState().dateKey,
+      localDate,
     );
+    const isAdmin = user.role === "admin";
 
-    if (duty.assignee_id !== user.id) {
+    if (duty.assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the assignee can update task checks");
     }
 
-    if (!["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
+    if (!isAdmin && !isDateWithinDutyPeriod(duty, localDate)) {
+      throw conflict("Duty is outside the assignee date range");
+    }
+
+    if (!isAdmin && !["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
       throw conflict("Duty status does not allow task checks");
     }
 

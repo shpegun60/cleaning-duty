@@ -25,8 +25,9 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = ReadyForRecheckSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
+    const isAdmin = user.role === "admin";
 
-    if (duty.assignee_id !== user.id) {
+    if (duty.assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the assignee can request recheck");
     }
 

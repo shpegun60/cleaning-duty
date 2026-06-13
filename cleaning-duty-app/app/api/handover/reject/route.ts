@@ -28,12 +28,13 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = RejectHandoverSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
+    const isAdmin = user.role === "admin";
 
-    if (duty.next_assignee_id !== user.id) {
+    if (duty.next_assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the next assignee can reject handover");
     }
 
-    if (!["handover_pending", "ready_for_recheck"].includes(duty.status)) {
+    if (!isAdmin && !["handover_pending", "ready_for_recheck"].includes(duty.status)) {
       throw conflict("Duty status does not allow rejection");
     }
 

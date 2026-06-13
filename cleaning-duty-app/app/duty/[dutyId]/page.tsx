@@ -6,6 +6,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
 import {
   activateDutyIfCurrentScheduled,
+  isDateWithinDutyPeriod,
   listRooms,
   listTaskChecks,
   listTasks,
@@ -24,9 +25,10 @@ export default async function DutyPage({
 }) {
   const user = await requireUserPage();
   const { dutyId } = await params;
+  const localDate = getLocalSchedulerState().dateKey;
   const duty = await activateDutyIfCurrentScheduled(
     await loadDutyPeriod(dutyId),
-    getLocalSchedulerState().dateKey,
+    localDate,
   );
 
   if (duty.assignee_id !== user.id && user.role !== "admin") {
@@ -87,7 +89,9 @@ export default async function DutyPage({
       <DutyChecklist
         dutyPeriodId={duty.id}
         groups={groups}
+        canOverride={user.role === "admin"}
         isAssignee={duty.assignee_id === user.id}
+        isWithinDutyPeriod={isDateWithinDutyPeriod(duty, localDate)}
         status={duty.status}
       />
     </AppShell>

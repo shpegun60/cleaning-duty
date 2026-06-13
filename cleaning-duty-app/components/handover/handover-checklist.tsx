@@ -30,12 +30,14 @@ export function HandoverChecklist({
   dutyPeriodId,
   status,
   isNextAssignee,
+  canOverride,
   cleaningDone,
   rooms,
 }: {
   dutyPeriodId: string;
   status: DutyStatus;
   isNextAssignee: boolean;
+  canOverride: boolean;
   cleaningDone: boolean;
   rooms: RoomItem[];
 }) {
@@ -45,7 +47,9 @@ export function HandoverChecklist({
   );
   const [comment, setComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
-  const canEdit = isNextAssignee && ["handover_pending", "ready_for_recheck"].includes(status);
+  const canEdit =
+    canOverride ||
+    (isNextAssignee && ["handover_pending", "ready_for_recheck"].includes(status));
   const allAccepted = useMemo(
     () => rooms.every((room) => accepted.get(room.id)),
     [accepted, rooms],

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/guards";
 import {
   activateDutyIfCurrentScheduled,
   assertAllActiveTasksChecked,
+  isDateWithinDutyPeriod,
   loadDutyPeriod,
   updateDutyPeriod,
   writeAuditLog,
@@ -19,16 +20,22 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = CompleteDutySchema.parse(await request.json());
+    const localDate = getLocalSchedulerState().dateKey;
     const duty = await activateDutyIfCurrentScheduled(
       await loadDutyPeriod(body.dutyPeriodId),
-      getLocalSchedulerState().dateKey,
+      localDate,
     );
+    const isAdmin = user.role === "admin";
 
-    if (duty.assignee_id !== user.id && user.role !== "admin") {
+    if (duty.assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the assignee or admin can complete duty");
     }
 
-    if (!["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
+    if (!isAdmin && !isDateWithinDutyPeriod(duty, localDate)) {
+      throw conflict("Duty is outside the assignee date range");
+    }
+
+    if (!isAdmin && !["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
       throw conflict("Duty status does not allow completion");
     }
 

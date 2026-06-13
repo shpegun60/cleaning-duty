@@ -36,11 +36,15 @@ export function DutyChecklist({
   dutyPeriodId,
   status,
   isAssignee,
+  isWithinDutyPeriod,
+  canOverride,
   groups,
 }: {
   dutyPeriodId: string;
   status: DutyStatus;
   isAssignee: boolean;
+  isWithinDutyPeriod: boolean;
+  canOverride: boolean;
   groups: RoomGroup[];
 }) {
   const router = useRouter();
@@ -53,7 +57,11 @@ export function DutyChecklist({
       ),
   );
   const [message, setMessage] = useState<string | null>(null);
-  const canEdit = isAssignee && ["active", "rejected", "ready_for_recheck"].includes(status);
+  const canEdit =
+    canOverride ||
+    (isAssignee &&
+      isWithinDutyPeriod &&
+      ["active", "rejected", "ready_for_recheck"].includes(status));
   const allChecked = useMemo(
     () => groups.every((group) => group.tasks.every((task) => checked.get(task.id))),
     [checked, groups],

@@ -23,13 +23,19 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = AcceptHandoverSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
+    const isAdmin = user.role === "admin";
 
-    if (duty.next_assignee_id !== user.id) {
+    if (duty.next_assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the next assignee can accept handover");
     }
 
-    if (!["handover_pending", "ready_for_recheck"].includes(duty.status)) {
+    if (!isAdmin && !["handover_pending", "ready_for_recheck"].includes(duty.status)) {
       throw conflict("Duty status does not allow handover accept");
+    }
+
+    let receivingAssigneeId = duty.next_assignee_id ?? user.id;
+    if (isAdmin && !duty.next_assignee_id) {
+      receivingAssigneeId = (await resolveNextAssignee(duty.assignee_id)).id;
     }
 
     await assertAllActiveRoomsAccepted(duty.id);
@@ -46,7 +52,7 @@ export async function POST(request: Request) {
       settings.rotation_period_unit,
       settings.rotation_period_count,
     );
-    const nextAssignee = await resolveNextAssignee(user.id);
+    const nextAssignee = await resolveNextAssignee(receivingAssigneeId);
     const existingNext = await findDutyByWeekStart(nextPeriodStart);
 
     if (existingNext) {
@@ -55,13 +61,13 @@ export async function POST(request: Request) {
       }
 
       await updateDutyPeriod(existingNext.id, {
-        assignee_id: user.id,
+        assignee_id: receivingAssigneeId,
         next_assignee_id: nextAssignee.id,
         status: "active",
       });
     } else {
       await insertDutyPeriod({
-        assigneeId: user.id,
+        assigneeId: receivingAssigneeId,
         nextAssigneeId: nextAssignee.id,
         weekStart: nextPeriodStart,
         weekEnd: nextPeriodEnd,
@@ -78,6 +84,7 @@ export async function POST(request: Request) {
       payload: {
         nextPeriodStart,
         nextPeriodEnd,
+        receivingAssigneeId,
         nextAssigneeId: nextAssignee.id,
       },
     });

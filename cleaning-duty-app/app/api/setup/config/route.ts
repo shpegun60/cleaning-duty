@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { readRuntimeConfig, updateRuntimeConfig } from "@/lib/config/runtime";
-import { updateLocalAppSettingsDirect, writeLocalAuditLogDirect } from "@/lib/data/store";
+import { writeLocalAuditLogDirect } from "@/lib/data/store";
 import { forbidden, handleRouteError } from "@/lib/http";
 import { hasLocalAdminSession } from "@/lib/local/auth";
 
@@ -17,13 +17,6 @@ const SetupConfigSchema = z.object({
   supabaseSecretKey: z.string(),
   resendApiKey: z.string(),
   cronSecret: z.string(),
-  timezone: z.string().trim().min(1),
-  saturdayReminderHour: z.number().int().min(0).max(23),
-  sundayReminderHour: z.number().int().min(0).max(23),
-  reminderWindowHours: z.number().int().min(1).max(6),
-  futureScheduleWeeks: z.number().int().min(1).max(52),
-  rotationPeriodUnit: z.enum(["day", "week", "month"]),
-  rotationPeriodCount: z.number().int().min(1).max(12),
 });
 
 export async function POST(request: Request) {
@@ -48,16 +41,6 @@ export async function POST(request: Request) {
       cronSecret: body.cronSecret || current.cronSecret,
     });
 
-    updateLocalAppSettingsDirect({
-      timezone: body.timezone,
-      saturdayReminderHour: body.saturdayReminderHour,
-      sundayReminderHour: body.sundayReminderHour,
-      reminderWindowHours: body.reminderWindowHours,
-      futureScheduleWeeks: body.futureScheduleWeeks,
-      rotationPeriodUnit: body.rotationPeriodUnit,
-      rotationPeriodCount: body.rotationPeriodCount,
-    });
-
     writeLocalAuditLogDirect({
       actorId: "local-admin",
       action: "runtime_config_updated",
@@ -68,15 +51,6 @@ export async function POST(request: Request) {
         hasSupabasePublishableKey: Boolean(next.supabasePublishableKey),
         hasSupabaseSecretKey: Boolean(next.supabaseSecretKey),
         hasResendApiKey: Boolean(next.resendApiKey),
-        settings: {
-          timezone: body.timezone,
-          saturdayReminderHour: body.saturdayReminderHour,
-          sundayReminderHour: body.sundayReminderHour,
-          reminderWindowHours: body.reminderWindowHours,
-          futureScheduleWeeks: body.futureScheduleWeeks,
-          rotationPeriodUnit: body.rotationPeriodUnit,
-          rotationPeriodCount: body.rotationPeriodCount,
-        },
       },
     });
 

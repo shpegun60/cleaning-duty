@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { LogoutButton } from "@/components/layout/logout-button";
 import type { Profile } from "@/lib/types";
 
 export function AppShell({
@@ -32,6 +33,7 @@ export function AppShell({
             <span className="rounded-md bg-stone-100 px-3 py-2 text-stone-700">
               {user.full_name}
             </span>
+            <LogoutButton />
           </nav>
         </div>
       </header>

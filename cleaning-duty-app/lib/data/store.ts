@@ -956,9 +956,15 @@ export function isCurrentScheduledDuty(
 ) {
   return (
     duty.status === "scheduled" &&
-    duty.week_start <= localDate &&
-    duty.week_end >= localDate
+    isDateWithinDutyPeriod(duty, localDate)
   );
+}
+
+export function isDateWithinDutyPeriod(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+) {
+  return duty.week_start <= localDate && duty.week_end >= localDate;
 }
 
 export async function activateDutyIfCurrentScheduled(

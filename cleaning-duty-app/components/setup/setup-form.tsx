@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import type { AppSettings } from "@/lib/types";
 
 type PublicConfig = {
   backendMode: "local" | "supabase";
@@ -38,10 +37,8 @@ async function postJson(url: string, body: unknown) {
 
 export function SetupForm({
   config,
-  settings,
 }: {
   config: PublicConfig;
-  settings: AppSettings;
 }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
@@ -66,13 +63,6 @@ export function SetupForm({
         supabaseSecretKey: String(form.get("supabaseSecretKey") ?? ""),
         resendApiKey: String(form.get("resendApiKey") ?? ""),
         cronSecret: String(form.get("cronSecret") ?? ""),
-        timezone: String(form.get("timezone") ?? ""),
-        saturdayReminderHour: Number(form.get("saturdayReminderHour") ?? 8),
-        sundayReminderHour: Number(form.get("sundayReminderHour") ?? 8),
-        reminderWindowHours: Number(form.get("reminderWindowHours") ?? 2),
-        futureScheduleWeeks: Number(form.get("futureScheduleWeeks") ?? 12),
-        rotationPeriodUnit: String(form.get("rotationPeriodUnit") ?? "week"),
-        rotationPeriodCount: Number(form.get("rotationPeriodCount") ?? 1),
       });
       setMessage("Налаштування збережено");
       router.refresh();
@@ -84,7 +74,8 @@ export function SetupForm({
   }
 
   async function logout() {
-    await postJson("/api/local-auth/logout", {});
+    await postJson("/api/auth/logout", {});
+    router.push("/login");
     router.refresh();
   }
 
@@ -175,38 +166,6 @@ export function SetupForm({
             <label className="grid gap-2 text-sm font-medium">
               APP_TIMEZONE
               <input className="h-10 rounded-md border px-3" name="appTimezone" defaultValue={config.appTimezone} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Settings timezone
-              <input className="h-10 rounded-md border px-3" name="timezone" defaultValue={settings.timezone} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Saturday reminder hour
-              <input className="h-10 rounded-md border px-3" name="saturdayReminderHour" defaultValue={settings.saturday_reminder_hour} type="number" min={0} max={23} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Sunday reminder hour
-              <input className="h-10 rounded-md border px-3" name="sundayReminderHour" defaultValue={settings.sunday_reminder_hour} type="number" min={0} max={23} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Reminder window hours
-              <input className="h-10 rounded-md border px-3" name="reminderWindowHours" defaultValue={settings.reminder_window_hours} type="number" min={1} max={6} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Future schedule periods
-              <input className="h-10 rounded-md border px-3" name="futureScheduleWeeks" defaultValue={settings.future_schedule_weeks} type="number" min={1} max={52} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Rotation period count
-              <input className="h-10 rounded-md border px-3" name="rotationPeriodCount" defaultValue={settings.rotation_period_count} type="number" min={1} max={12} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Rotation period unit
-              <select className="h-10 rounded-md border px-3" name="rotationPeriodUnit" defaultValue={settings.rotation_period_unit}>
-                <option value="day">days</option>
-                <option value="week">weeks</option>
-                <option value="month">months</option>
-              </select>
             </label>
           </div>
         </section>

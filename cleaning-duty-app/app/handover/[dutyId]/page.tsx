@@ -74,6 +74,7 @@ export default async function HandoverPage({
       </div>
       <HandoverChecklist
         dutyPeriodId={duty.id}
+        canOverride={user.role === "admin"}
         cleaningDone={Boolean(duty.cleaned_at)}
         isNextAssignee={duty.next_assignee_id === user.id}
         rooms={roomItems}
