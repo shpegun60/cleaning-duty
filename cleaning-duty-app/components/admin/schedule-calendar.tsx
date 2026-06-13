@@ -93,6 +93,18 @@ export function ScheduleCalendar({
     () => new Map(duties.map((duty) => [duty.id, duty])),
     [duties],
   );
+  const nextDutyById = useMemo(() => {
+    const orderedDuties = [...duties].sort((a, b) =>
+      a.week_start.localeCompare(b.week_start),
+    );
+    const map = new Map<string, DutyPeriod>();
+
+    for (let index = 0; index < orderedDuties.length - 1; index += 1) {
+      map.set(orderedDuties[index].id, orderedDuties[index + 1]);
+    }
+
+    return map;
+  }, [duties]);
   const activeRotationWorkers = profiles.filter(
     (profile) =>
       profile.role === "worker" &&
@@ -208,9 +220,9 @@ export function ScheduleCalendar({
             const dateKey = format(day, "yyyy-MM-dd");
             const duty = dutyForDay(duties, dateKey);
             const latestChange = duty ? latestChangeByDutyId.get(duty.id) : null;
-            const nextAssignee = duty?.next_assignee_id
-              ? profileMap.get(duty.next_assignee_id)
-              : null;
+            const nextDuty = duty ? nextDutyById.get(duty.id) ?? null : null;
+            const nextAssigneeId = nextDuty?.assignee_id ?? duty?.next_assignee_id ?? null;
+            const nextAssignee = nextAssigneeId ? profileMap.get(nextAssigneeId) : null;
             const assignee = duty ? profileMap.get(duty.assignee_id) : null;
             const isCurrentMonth = day >= monthStart && day <= monthEnd;
             const isHandoverDay = duty?.week_end === dateKey;
@@ -275,7 +287,7 @@ export function ScheduleCalendar({
                 ) : null}
                 {isHandoverDay ? (
                   <div className="mt-2 truncate rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
-                    Передача{nextAssignee ? ` -> ${nextAssignee.full_name}` : ""}
+                    {handoverLabel(duty, nextAssignee)}
                   </div>
                 ) : null}
               </div>
@@ -431,6 +443,16 @@ function AssigneeChangesTable({
 function profileName(profileMap: Map<string, Profile>, profileId: string | null) {
   if (!profileId) return "Не задано";
   return profileMap.get(profileId)?.full_name ?? profileId;
+}
+
+function handoverLabel(duty: DutyPeriod | undefined, nextAssignee: Profile | undefined | null) {
+  if (!duty || !nextAssignee) return "Передача";
+
+  if (nextAssignee.id === duty.assignee_id) {
+    return `Продовжує ${nextAssignee.full_name}`;
+  }
+
+  return `Передача -> ${nextAssignee.full_name}`;
 }
 
 function dutyForDay(duties: DutyPeriod[], dateKey: string) {

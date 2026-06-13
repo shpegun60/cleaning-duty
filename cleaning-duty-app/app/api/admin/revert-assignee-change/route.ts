@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { revertAssigneeChange, writeAuditLog } from "@/lib/data/store";
+import {
+  revertAssigneeChange,
+  syncHandoverLinksAroundDuty,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const RevertAssigneeChangeSchema = z.object({
@@ -13,6 +17,7 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     const body = RevertAssigneeChangeSchema.parse(await request.json());
     const change = await revertAssigneeChange(body.changeId, admin.id);
+    await syncHandoverLinksAroundDuty(change.duty_period_id);
 
     await writeAuditLog({
       actorId: admin.id,

@@ -216,6 +216,17 @@ export async function resolveNextAssignee(currentAssigneeId: string) {
   return users[(currentIndex + 1) % users.length];
 }
 
+export async function resolveHandoverTargetAssigneeId(
+  duty: Pick<DutyPeriod, "week_start" | "assignee_id">,
+) {
+  const nextDuty = await nextDutyAfter(duty.week_start);
+  if (nextDuty) {
+    return nextDuty.assignee_id;
+  }
+
+  return (await resolveNextAssignee(duty.assignee_id)).id;
+}
+
 export function getNextRotationUser(users: Profile[], currentAssigneeId: string) {
   const currentIndex = users.findIndex((user) => user.id === currentAssigneeId);
   return users[currentIndex < 0 ? 0 : (currentIndex + 1) % users.length];
@@ -1142,10 +1153,7 @@ export async function revertAssigneeChange(changeId: string, adminId: string) {
 }
 
 function assertDutyMatchesChange(duty: DutyPeriod, change: AssigneeChange) {
-  if (
-    duty.assignee_id !== change.new_assignee_id ||
-    duty.next_assignee_id !== change.new_next_assignee_id
-  ) {
+  if (duty.assignee_id !== change.new_assignee_id) {
     throw conflict("Duty was changed after this record and cannot be reverted directly");
   }
 }
@@ -1247,6 +1255,49 @@ export async function previousDutyBefore(startWeek: string) {
     )
     .get(startWeek);
   return row ? asDuty(row as Record<string, unknown>) : null;
+}
+
+export async function nextDutyAfter(startWeek: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase
+      .from("duty_periods")
+      .select("*")
+      .gt("week_start", startWeek)
+      .neq("status", "cancelled")
+      .order("week_start", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data as DutyPeriod | null;
+  }
+
+  const row = getLocalDb()
+    .prepare(
+      "select * from duty_periods where week_start > ? and status <> 'cancelled' order by week_start asc limit 1",
+    )
+    .get(startWeek);
+  return row ? asDuty(row as Record<string, unknown>) : null;
+}
+
+export async function syncHandoverLinksAroundDuty(dutyId: string) {
+  const duty = await loadDutyPeriod(dutyId);
+  const nextAssigneeId = await resolveHandoverTargetAssigneeId(duty);
+
+  if (duty.next_assignee_id !== nextAssigneeId) {
+    await updateDutyPeriod(duty.id, { next_assignee_id: nextAssigneeId });
+  }
+
+  const previousDuty = await previousDutyBefore(duty.week_start);
+  if (previousDuty && isHandoverLinkMutable(previousDuty)) {
+    if (previousDuty.next_assignee_id !== duty.assignee_id) {
+      await updateDutyPeriod(previousDuty.id, { next_assignee_id: duty.assignee_id });
+    }
+  }
+}
+
+function isHandoverLinkMutable(duty: DutyPeriod) {
+  return !["accepted", "cancelled", "force_closed"].includes(duty.status);
 }
 
 export async function listTaskChecks(dutyPeriodId: string) {

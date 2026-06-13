@@ -9,7 +9,8 @@ import {
   markNotificationFailed,
   markNotificationSent,
   recordAssigneeChange,
-  resolveNextAssignee,
+  resolveHandoverTargetAssigneeId,
+  syncHandoverLinksAroundDuty,
   writeAuditLog,
 } from "@/lib/data/store";
 import { adminChangedAssigneeTemplate } from "@/lib/email/templates";
@@ -47,14 +48,18 @@ export async function POST(request: Request) {
       throw conflict("New assignee must be an active worker in rotation");
     }
 
-    const nextAssignee = await resolveNextAssignee(newAssignee.id);
+    const nextAssigneeId = await resolveHandoverTargetAssigneeId({
+      week_start: duty.week_start,
+      assignee_id: newAssignee.id,
+    });
     const change = await recordAssigneeChange({
       duty,
       newAssigneeId: newAssignee.id,
-      newNextAssigneeId: nextAssignee.id,
+      newNextAssigneeId: nextAssigneeId,
       reason: body.reason,
       adminId: admin.id,
     });
+    await syncHandoverLinksAroundDuty(duty.id);
 
     const notification = await createNotificationIfMissing({
       dutyPeriodId: duty.id,
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
       payload: {
         previousAssigneeId: duty.assignee_id,
         newAssigneeId: newAssignee.id,
-        nextAssigneeId: nextAssignee.id,
+        nextAssigneeId,
         assigneeChangeId: change.id,
         reason: body.reason,
       },
