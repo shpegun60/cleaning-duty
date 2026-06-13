@@ -489,7 +489,6 @@ export function ScheduleTools({
       await postJson("/api/admin/schedule-settings", {
         rotationPeriodCount: Number(form.get("rotationPeriodCount") ?? 1),
         rotationPeriodUnit: String(form.get("rotationPeriodUnit") ?? "week"),
-        futureScheduleWeeks: Number(form.get("futureScheduleWeeks") ?? 12),
       });
     });
   }
@@ -517,6 +516,24 @@ export function ScheduleTools({
     });
   }
 
+  async function clearSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (
+      !window.confirm(
+        "Очистити весь графік? Будуть видалені всі періоди чергування і пов'язані перевірки.",
+      )
+    ) {
+      return;
+    }
+
+    await run(async () => {
+      await postJson("/api/admin/clear-schedule", {
+        confirm: true,
+      });
+    });
+  }
+
   async function retry(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -532,7 +549,7 @@ export function ScheduleTools({
       <form onSubmit={saveSettings} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
         <h2 className="font-semibold">Налаштування чергування</h2>
         <p className="text-sm text-stone-600">
-          Як часто змінюється черговий і скільки майбутніх періодів генерувати.
+          Як довго триває одне чергування перед передачею наступній людині.
         </p>
         <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr]">
           <label className="grid gap-1 text-sm">
@@ -559,17 +576,6 @@ export function ScheduleTools({
             </select>
           </label>
         </div>
-        <label className="grid gap-1 text-sm">
-          Майбутніх періодів
-          <input
-            className="h-10 rounded-md border px-3"
-            name="futureScheduleWeeks"
-            defaultValue={settings.future_schedule_weeks}
-            type="number"
-            min={1}
-            max={52}
-          />
-        </label>
         <Button type="submit" className="w-full">Зберегти налаштування</Button>
       </form>
 
@@ -609,7 +615,7 @@ export function ScheduleTools({
           <input className="h-10 rounded-md border px-3" name="startDate" type="date" required />
         </label>
         <label className="grid gap-1 text-sm">
-          Кількість періодів
+          Скільки чергувань створити
           <input
             className="h-10 rounded-md border px-3"
             name="periods"
@@ -625,6 +631,16 @@ export function ScheduleTools({
         </p>
         <Button type="submit" className="w-full" disabled={activeRotationWorkers.length < 2}>
           Згенерувати графік
+        </Button>
+      </form>
+
+      <form onSubmit={clearSchedule} className="grid gap-3 rounded-md border border-red-200 bg-white p-4">
+        <h2 className="font-semibold">Очистити графік</h2>
+        <p className="text-sm text-stone-600">
+          Видаляє всі періоди чергування з графіка. Люди, кімнати, роботи і rotation order залишаються.
+        </p>
+        <Button type="submit" variant="danger" className="w-full">
+          Очистити весь графік
         </Button>
       </form>
 

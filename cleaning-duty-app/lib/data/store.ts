@@ -956,6 +956,25 @@ export async function deleteFutureScheduledDuties(startWeek: string) {
     .run(startWeek);
 }
 
+export async function clearDutySchedule() {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { count, error } = await supabase
+      .from("duty_periods")
+      .delete({ count: "exact" })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+    if (error) throw error;
+    return count ?? 0;
+  }
+
+  const db = getLocalDb();
+  const before = db.prepare("select count(*) as count from duty_periods").get() as {
+    count: number;
+  };
+  db.prepare("delete from duty_periods").run();
+  return before.count;
+}
+
 export async function previousDutyBefore(startWeek: string) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();

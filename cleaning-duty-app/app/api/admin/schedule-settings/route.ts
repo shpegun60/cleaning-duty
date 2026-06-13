@@ -7,7 +7,7 @@ import { handleRouteError } from "@/lib/http";
 const ScheduleSettingsSchema = z.object({
   rotationPeriodUnit: z.enum(["day", "week", "month"]),
   rotationPeriodCount: z.number().int().min(1).max(12),
-  futureScheduleWeeks: z.number().int().min(1).max(52),
+  futureScheduleWeeks: z.number().int().min(1).max(52).optional(),
 });
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       saturdayReminderHour: current.saturday_reminder_hour,
       sundayReminderHour: current.sunday_reminder_hour,
       reminderWindowHours: current.reminder_window_hours,
-      futureScheduleWeeks: body.futureScheduleWeeks,
+      futureScheduleWeeks: body.futureScheduleWeeks ?? current.future_schedule_weeks,
       rotationPeriodUnit: body.rotationPeriodUnit,
       rotationPeriodCount: body.rotationPeriodCount,
     });
