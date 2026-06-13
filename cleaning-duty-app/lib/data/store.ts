@@ -50,6 +50,10 @@ function asTaskCheck(row: Record<string, unknown>) {
   return mapBooleanFields(row, ["is_checked"]) as TaskCheck;
 }
 
+function asDuty(row: Record<string, unknown>) {
+  return { ...row } as DutyPeriod;
+}
+
 function asSettings(row: Record<string, unknown>) {
   return { ...row, id: true } as AppSettings;
 }
@@ -812,7 +816,7 @@ export async function loadDutyPeriod(id: string) {
 
   const row = getLocalDb().prepare("select * from duty_periods where id = ?").get(id);
   if (!row) throw new Error("Duty period not found");
-  return row as DutyPeriod;
+  return asDuty(row as Record<string, unknown>);
 }
 
 export async function listDutiesForUser(userId: string) {
@@ -843,7 +847,8 @@ export async function listDutiesForUser(userId: string) {
        order by week_start asc
        limit 10`,
     )
-    .all(userId, userId) as DutyPeriod[];
+    .all(userId, userId)
+    .map((row) => asDuty(row as Record<string, unknown>));
 }
 
 export async function listDuties(limit = 52, descending = true) {
@@ -861,7 +866,33 @@ export async function listDuties(limit = 52, descending = true) {
     .prepare(
       `select * from duty_periods order by week_start ${descending ? "desc" : "asc"} limit ?`,
     )
-    .all(limit) as DutyPeriod[];
+    .all(limit)
+    .map((row) => asDuty(row as Record<string, unknown>));
+}
+
+export async function listDutiesInRange(startDate: string, endDate: string) {
+  if (!isLocalBackend()) {
+    return sbList<DutyPeriod>((supabase) =>
+      supabase
+        .from("duty_periods")
+        .select("*")
+        .neq("status", "cancelled")
+        .lte("week_start", endDate)
+        .gte("week_end", startDate)
+        .order("week_start", { ascending: true }),
+    );
+  }
+
+  return getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status <> 'cancelled'
+         and week_start <= ?
+         and week_end >= ?
+       order by week_start asc`,
+    )
+    .all(endDate, startDate)
+    .map((row) => asDuty(row as Record<string, unknown>));
 }
 
 export async function findDutyByWeekStart(weekStart: string) {
@@ -880,7 +911,7 @@ export async function findDutyByWeekStart(weekStart: string) {
   const row = getLocalDb()
     .prepare("select * from duty_periods where week_start = ? and status <> 'cancelled'")
     .get(weekStart);
-  return (row as DutyPeriod | undefined) ?? null;
+  return row ? asDuty(row as Record<string, unknown>) : null;
 }
 
 export async function updateDutyPeriod(id: string, patch: Partial<DutyPeriod>) {
@@ -995,7 +1026,7 @@ export async function previousDutyBefore(startWeek: string) {
       "select * from duty_periods where week_start < ? and status <> 'cancelled' order by week_start desc limit 1",
     )
     .get(startWeek);
-  return (row as DutyPeriod | undefined) ?? null;
+  return row ? asDuty(row as Record<string, unknown>) : null;
 }
 
 export async function listTaskChecks(dutyPeriodId: string) {
