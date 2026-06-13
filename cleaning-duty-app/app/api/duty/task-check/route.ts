@@ -2,12 +2,14 @@ import { z } from "zod";
 
 import { requireUser } from "@/lib/auth/guards";
 import {
+  activateDutyIfCurrentScheduled,
   loadActiveTask,
   loadDutyPeriod,
   upsertTaskCheck,
   writeAuditLog,
 } from "@/lib/data/store";
 import { conflict, forbidden, handleRouteError } from "@/lib/http";
+import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 
 const TaskCheckSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -19,7 +21,10 @@ export async function POST(request: Request) {
   try {
     const user = await requireUser();
     const body = TaskCheckSchema.parse(await request.json());
-    const duty = await loadDutyPeriod(body.dutyPeriodId);
+    const duty = await activateDutyIfCurrentScheduled(
+      await loadDutyPeriod(body.dutyPeriodId),
+      getLocalSchedulerState().dateKey,
+    );
 
     if (duty.assignee_id !== user.id) {
       throw forbidden("Only the assignee can update task checks");

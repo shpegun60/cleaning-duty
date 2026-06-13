@@ -950,6 +950,63 @@ export async function loadDutyPeriod(id: string) {
   return asDuty(row as Record<string, unknown>);
 }
 
+export function isCurrentScheduledDuty(
+  duty: Pick<DutyPeriod, "status" | "week_start" | "week_end">,
+  localDate: string,
+) {
+  return (
+    duty.status === "scheduled" &&
+    duty.week_start <= localDate &&
+    duty.week_end >= localDate
+  );
+}
+
+export async function activateDutyIfCurrentScheduled(
+  duty: DutyPeriod,
+  localDate: string,
+): Promise<DutyPeriod> {
+  if (!isCurrentScheduledDuty(duty, localDate)) {
+    return duty;
+  }
+
+  await updateDutyPeriod(duty.id, { status: "active" });
+  return { ...duty, status: "active" };
+}
+
+export async function activateScheduledDutiesForDate(
+  localDate: string,
+): Promise<DutyPeriod[]> {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase
+      .from("duty_periods")
+      .update({ status: "active" })
+      .eq("status", "scheduled")
+      .lte("week_start", localDate)
+      .gte("week_end", localDate)
+      .select("*");
+    if (error) throw error;
+    return (data ?? []) as DutyPeriod[];
+  }
+
+  const duties = getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status = 'scheduled'
+         and week_start <= ?
+         and week_end >= ?
+       order by week_start asc`,
+    )
+    .all(localDate, localDate)
+    .map((row) => asDuty(row as Record<string, unknown>));
+
+  for (const duty of duties) {
+    await updateDutyPeriod(duty.id, { status: "active" });
+  }
+
+  return duties.map((duty) => ({ ...duty, status: "active" }));
+}
+
 export async function listDutiesForUser(userId: string) {
   if (!isLocalBackend()) {
     return sbList<DutyPeriod>((supabase) =>

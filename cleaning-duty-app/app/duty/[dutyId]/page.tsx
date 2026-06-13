@@ -5,12 +5,14 @@ import { AppShell } from "@/components/layout/app-shell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
 import {
+  activateDutyIfCurrentScheduled,
   listRooms,
   listTaskChecks,
   listTasks,
   loadDutyPeriod,
   loadProfile,
 } from "@/lib/data/store";
+import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 import type { Room, Task, TaskCheck } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +24,10 @@ export default async function DutyPage({
 }) {
   const user = await requireUserPage();
   const { dutyId } = await params;
-  const duty = await loadDutyPeriod(dutyId);
+  const duty = await activateDutyIfCurrentScheduled(
+    await loadDutyPeriod(dutyId),
+    getLocalSchedulerState().dateKey,
+  );
 
   if (duty.assignee_id !== user.id && user.role !== "admin") {
     notFound();
