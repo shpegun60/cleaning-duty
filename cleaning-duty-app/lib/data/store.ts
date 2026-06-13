@@ -154,6 +154,38 @@ function normalizedRotationOrder(role: "admin" | "worker", rotationOrder: number
   return role === "worker" ? rotationOrder : null;
 }
 
+function firstFreeRotationOrder(profiles: Profile[]) {
+  const usedOrders = new Set(
+    profiles
+      .filter(
+        (profile) =>
+          profile.role === "worker" &&
+          profile.is_active &&
+          profile.rotation_order !== null &&
+          profile.rotation_order >= 1,
+      )
+      .map((profile) => Number(profile.rotation_order)),
+  );
+
+  let order = 1;
+  while (usedOrders.has(order)) {
+    order += 1;
+  }
+  return order;
+}
+
+async function createRotationOrder(role: "admin" | "worker", rotationOrder: number | null) {
+  if (role !== "worker") {
+    return null;
+  }
+
+  if (rotationOrder !== null) {
+    return rotationOrder;
+  }
+
+  return firstFreeRotationOrder(await listProfiles());
+}
+
 export async function resolveNextAssignee(currentAssigneeId: string) {
   const users = await listActiveRotationProfiles();
 
@@ -194,7 +226,7 @@ export async function createProfile(params: {
   role: "admin" | "worker";
   rotationOrder: number | null;
 }) {
-  const rotationOrder = normalizedRotationOrder(params.role, params.rotationOrder);
+  const rotationOrder = await createRotationOrder(params.role, params.rotationOrder);
   await assertRotationOrderAvailable({
     role: params.role,
     rotationOrder,

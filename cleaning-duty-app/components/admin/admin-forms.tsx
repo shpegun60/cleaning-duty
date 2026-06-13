@@ -52,16 +52,16 @@ export function InviteUserForm() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
 
     await run(async () => {
       await postJson("/api/admin/users/invite", {
         email: String(form.get("email") ?? ""),
         fullName: String(form.get("fullName") ?? ""),
         role: String(form.get("role") ?? "worker"),
-        rotationOrder: intOrNull(form.get("rotationOrder")),
       });
-      event.currentTarget.reset();
+      formElement.reset();
     });
   }
 
@@ -70,12 +70,11 @@ export function InviteUserForm() {
       <h2 className="text-base font-semibold">Запросити користувача</h2>
       <input className="h-10 rounded-md border px-3" name="fullName" placeholder="Ім'я" required />
       <input className="h-10 rounded-md border px-3" name="email" placeholder="email@example.com" type="email" required />
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3">
         <select className="h-10 rounded-md border px-3" name="role" defaultValue="worker">
           <option value="worker">worker</option>
           <option value="admin">admin</option>
         </select>
-        <input className="h-10 rounded-md border px-3" name="rotationOrder" placeholder="Rotation order" type="number" min={1} />
       </div>
       <Button type="submit">Запросити</Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}

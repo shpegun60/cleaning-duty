@@ -8,7 +8,7 @@ const InviteUserSchema = z.object({
   email: z.string().email(),
   fullName: z.string().trim().min(2),
   role: z.enum(["admin", "worker"]),
-  rotationOrder: z.number().int().min(1).nullable(),
+  rotationOrder: z.number().int().min(1).nullable().optional(),
 });
 
 export async function POST(request: Request) {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       email: body.email,
       fullName: body.fullName,
       role: body.role,
-      rotationOrder: body.rotationOrder,
+      rotationOrder: body.rotationOrder ?? null,
     });
 
     await writeAuditLog({
