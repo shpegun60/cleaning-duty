@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      APP_BACKEND: "${APP_BACKEND:-local}"
+      APP_URL: "${APP_URL:-http://localhost:3000}"
+      APP_TIMEZONE: "${APP_TIMEZONE:-Europe/Warsaw}"
+      CRON_SECRET: "${CRON_SECRET:?Set CRON_SECRET in .env}"
+      RESEND_API_KEY: "${RESEND_API_KEY:-}"
+      EMAIL_FROM: "${EMAIL_FROM:-Cleaning Duty <noreply@example.com>}"
+      NEXT_PUBLIC_SUPABASE_URL: "${NEXT_PUBLIC_SUPABASE_URL:-}"
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY:-}"
+      SUPABASE_SECRET_KEY: "${SUPABASE_SECRET_KEY:-}"
+    volumes:
+      - cleaning-duty-data:/app/data
+
+  scheduler:
+    image: alpine:3.20
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      CRON_SECRET: "${CRON_SECRET:?Set CRON_SECRET in .env}"
+    command: >
+      sh -c 'while true; do
+        wget -qO- --header="Authorization: Bearer $${CRON_SECRET}" http://app:3000/api/cron/scheduler || true;
+        sleep 3600;
+      done'
+
+volumes:
+  cleaning-duty-data:

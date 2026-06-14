@@ -98,6 +98,10 @@ npm run typecheck
 npm run build
 ```
 
+## Deployment
+
+For the full current app with Local SQLite mode, uploaded files, and cron reminders, use the Docker/VPS deployment path in [DEPLOYMENT.md](DEPLOYMENT.md).
+
 Manual cron test:
 
 ```bash
