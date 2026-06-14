@@ -53,6 +53,7 @@ export default async function DutyPage({
   const groups = activeRooms.map((room) => ({
     id: room.id,
     name: room.name,
+    description: room.description,
     tasks: activeTasks
       .filter((task) => task.room_id === room.id)
       .map((task) => ({

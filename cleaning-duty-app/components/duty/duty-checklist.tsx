@@ -16,6 +16,7 @@ type TaskItem = {
 type RoomGroup = {
   id: string;
   name: string;
+  description: string | null;
   tasks: TaskItem[];
 };
 
@@ -151,7 +152,12 @@ export function DutyChecklist({
     <div className="grid gap-4">
       {groups.map((group) => (
         <section key={group.id} className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="mb-3 text-lg font-semibold">{group.name}</h2>
+          <div className="mb-3">
+            <h2 className="text-lg font-semibold">{group.name}</h2>
+            {group.description ? (
+              <p className="mt-1 text-sm text-stone-600">{group.description}</p>
+            ) : null}
+          </div>
           <div className="grid gap-2">
             {group.tasks.map((task) => (
               <label
