@@ -673,21 +673,31 @@ export async function updateProfile(params: {
 
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
-    if (email !== existing.email || params.fullName !== existing.full_name) {
-      const { data: authUserData, error: authUserError } =
-        await supabase.auth.admin.getUserById(params.userId);
-      if (authUserError) throw authUserError;
+    const { data: authUserData, error: authUserError } =
+      await supabase.auth.admin.getUserById(params.userId);
+    if (authUserError) throw authUserError;
 
-      const { error: userError } = await supabase.auth.admin.updateUserById(params.userId, {
-        email,
-        email_confirm: true,
-        user_metadata: profileDisplayNameMetadata(
-          params.fullName,
-          authUserData.user?.user_metadata,
-        ),
-      });
-      if (userError) throwDuplicateEmailConflict(userError);
+    const authUpdate: {
+      email?: string;
+      email_confirm?: boolean;
+      user_metadata: Record<string, unknown>;
+    } = {
+      user_metadata: profileDisplayNameMetadata(
+        params.fullName,
+        authUserData.user?.user_metadata,
+      ),
+    };
+
+    if (email !== existing.email) {
+      authUpdate.email = email;
+      authUpdate.email_confirm = true;
     }
+
+    const { error: userError } = await supabase.auth.admin.updateUserById(
+      params.userId,
+      authUpdate,
+    );
+    if (userError) throwDuplicateEmailConflict(userError);
 
     const { error } = await supabase
       .from("profiles")
