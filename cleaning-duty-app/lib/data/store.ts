@@ -85,6 +85,27 @@ function jsonPayload(value: Json) {
   return value ? JSON.stringify(value) : null;
 }
 
+function throwDuplicateEmailConflict(error: unknown): never {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+
+  if (
+    (code === "23505" && message.includes("email")) ||
+    message.includes("profiles.email") ||
+    message.includes("profiles_email") ||
+    message.includes("already registered") ||
+    message.includes("already been registered") ||
+    (message.includes("email") && message.includes("already exists"))
+  ) {
+    throw conflict("Цей email вже використовується іншим користувачем");
+  }
+
+  throw error;
+}
+
 async function sbList<T>(
   callback: (supabase: SupabaseClient) => unknown,
 ) {
@@ -410,6 +431,30 @@ export async function loadProfile(id: string) {
   return asProfile(row as Record<string, unknown>);
 }
 
+async function findProfileByEmail(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+
+  if (!isLocalBackend()) {
+    const profiles = await sbList<Profile>((supabase) =>
+      supabase.from("profiles").select("*"),
+    );
+    return profiles.find((profile) => profile.email.toLowerCase() === normalizedEmail) ?? null;
+  }
+
+  const row = getLocalDb()
+    .prepare("select * from profiles where lower(email) = lower(?)")
+    .get(normalizedEmail);
+  return row ? asProfile(row as Record<string, unknown>) : null;
+}
+
+async function assertEmailAvailable(email: string, allowedUserId?: string) {
+  const existing = await findProfileByEmail(email);
+
+  if (existing && existing.id !== allowedUserId) {
+    throw conflict("Цей email вже використовується іншим користувачем");
+  }
+}
+
 export async function authenticateLocalProfile(email: string, password: string) {
   if (!isLocalBackend()) {
     return null;
@@ -474,6 +519,7 @@ export async function createProfile(params: {
   rotationOrder: number | null;
   initialPassword: string;
 }) {
+  await assertEmailAvailable(params.email);
   const rotationOrder = await createRotationOrder(params.role, params.rotationOrder);
   await assertRotationOrderAvailable({
     role: params.role,
@@ -491,7 +537,7 @@ export async function createProfile(params: {
         full_name: params.fullName,
       },
     });
-    if (userError) throw userError;
+    if (userError) throwDuplicateEmailConflict(userError);
     const userId = userData.user?.id;
     if (!userId) throw new Error("User creation did not return user id");
     const { error } = await supabase.from("profiles").upsert({
@@ -502,7 +548,7 @@ export async function createProfile(params: {
       rotation_order: rotationOrder,
       is_active: true,
     });
-    if (error) throw error;
+    if (error) throwDuplicateEmailConflict(error);
     await upsertAdminVisiblePassword(userId, params.initialPassword);
     return userId;
   }
@@ -525,7 +571,7 @@ export async function createProfile(params: {
     db.exec("commit");
   } catch (error) {
     db.exec("rollback");
-    throw error;
+    throwDuplicateEmailConflict(error);
   }
 
   return id;
@@ -601,6 +647,7 @@ export async function updateProfile(params: {
 }) {
   const existing = await loadProfile(params.userId);
   const email = params.email?.trim() ?? existing.email;
+  await assertEmailAvailable(email, params.userId);
 
   if (existing.id === "local-admin" && (params.role !== "admin" || !params.isActive)) {
     throw forbidden("Local admin cannot be demoted or deactivated");
@@ -624,7 +671,7 @@ export async function updateProfile(params: {
           full_name: params.fullName,
         },
       });
-      if (userError) throw userError;
+      if (userError) throwDuplicateEmailConflict(userError);
     }
 
     const { error } = await supabase
@@ -637,25 +684,29 @@ export async function updateProfile(params: {
         is_active: params.isActive,
       })
       .eq("id", params.userId);
-    if (error) throw error;
+    if (error) throwDuplicateEmailConflict(error);
     return;
   }
 
-  getLocalDb()
-    .prepare(
-      `update profiles
-       set email = ?, full_name = ?, role = ?, rotation_order = ?, is_active = ?, updated_at = ?
-       where id = ?`,
-    )
-    .run(
-      email,
-      params.fullName,
-      params.role,
-      rotationOrder,
-      params.isActive ? 1 : 0,
-      nowIso(),
-      params.userId,
-    );
+  try {
+    getLocalDb()
+      .prepare(
+        `update profiles
+         set email = ?, full_name = ?, role = ?, rotation_order = ?, is_active = ?, updated_at = ?
+         where id = ?`,
+      )
+      .run(
+        email,
+        params.fullName,
+        params.role,
+        rotationOrder,
+        params.isActive ? 1 : 0,
+        nowIso(),
+        params.userId,
+      );
+  } catch (error) {
+    throwDuplicateEmailConflict(error);
+  }
 }
 
 export async function removeProfile(userId: string) {
