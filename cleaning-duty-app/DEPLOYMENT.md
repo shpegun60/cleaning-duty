@@ -139,7 +139,7 @@ Where to get these values:
 - `LOCAL_AUTH_TOKEN`: a stable random secret used to sign the local setup/admin session cookie. If omitted, the app derives it from other server secrets.
 - `CRON_SECRET`: any long random value that you create yourself and save in Vercel env vars.
 
-Before the first Vercel deploy, run every SQL file in `supabase/migrations` in filename order against your Supabase project. Migration `013_shared_files_storage_bucket.sql` creates the Storage bucket for uploaded files, and `014_api_grants.sql` grants the Supabase API roles access to the app tables and RPC functions.
+Before the first Vercel deploy, run every SQL file in `supabase/migrations` in filename order against your Supabase project. Migration `013_shared_files_storage_bucket.sql` creates the Storage bucket for uploaded files, while `014_api_grants.sql` and later grant the Supabase API roles access to the app tables and RPC functions.
 
 Vercel Cron can call:
 
