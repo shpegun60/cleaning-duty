@@ -1648,7 +1648,11 @@ export async function syncHandoverLinksAroundDuty(dutyId: string) {
   }
 
   const previousDuty = await previousDutyBefore(duty.week_start);
-  if (previousDuty && isHandoverLinkMutable(previousDuty)) {
+  if (
+    previousDuty &&
+    isHandoverLinkMutable(previousDuty) &&
+    addDaysToDateKey(previousDuty.week_end, 1) === duty.week_start
+  ) {
     if (previousDuty.next_assignee_id !== duty.assignee_id) {
       await updateDutyPeriod(previousDuty.id, { next_assignee_id: duty.assignee_id });
     }
