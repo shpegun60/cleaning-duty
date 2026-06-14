@@ -8,6 +8,7 @@ import {
   insertDutyPeriod,
   listActiveRotationProfiles,
   previousDutyBefore,
+  updateAppSettings,
   writeAuditLog,
 } from "@/lib/data/store";
 import { addDaysToDateKey, periodEndFromStart } from "@/lib/domain/dates";
@@ -19,6 +20,7 @@ const RegenerateScheduleSchema = z.object({
   periods: z.number().int().min(1).max(52).optional(),
   startWeek: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   weeks: z.number().int().min(1).max(52).optional(),
+  gracePeriodDays: z.number().int().min(0).max(14).optional(),
 });
 
 export async function POST(request: Request) {
@@ -26,6 +28,7 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     const body = RegenerateScheduleSchema.parse(await request.json());
     const settings = await getAppSettings();
+    const gracePeriodDays = body.gracePeriodDays ?? settings.grace_period_days;
     const startDate = body.startDate ?? body.startWeek;
     const requestedPeriods = body.periods ?? body.weeks ?? settings.future_schedule_weeks;
 
@@ -45,6 +48,19 @@ export async function POST(request: Request) {
 
     const previousDuty = await previousDutyBefore(startDate);
     await deleteFutureScheduledDuties(startDate);
+
+    if (gracePeriodDays !== settings.grace_period_days) {
+      await updateAppSettings({
+        timezone: settings.timezone,
+        saturdayReminderHour: settings.saturday_reminder_hour,
+        sundayReminderHour: settings.sunday_reminder_hour,
+        reminderWindowHours: settings.reminder_window_hours,
+        futureScheduleWeeks: settings.future_schedule_weeks,
+        rotationPeriodUnit: settings.rotation_period_unit,
+        rotationPeriodCount: settings.rotation_period_count,
+        gracePeriodDays,
+      });
+    }
 
     let assignee = previousDuty
       ? getNextRotationUser(users, previousDuty.assignee_id as string)
@@ -104,6 +120,7 @@ export async function POST(request: Request) {
         periods: rows.length,
         rotationPeriodUnit: settings.rotation_period_unit,
         rotationPeriodCount: settings.rotation_period_count,
+        gracePeriodDays,
       },
     });
 

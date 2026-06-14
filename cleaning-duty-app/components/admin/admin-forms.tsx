@@ -567,6 +567,9 @@ export function ScheduleTools({
   scheduleLocked?: boolean;
 }) {
   const { message, run } = useApiForm();
+  const [gracePeriodDays, setGracePeriodDays] = useState(
+    String(settings.grace_period_days),
+  );
   const activeRotationWorkers = profiles.filter(
     (profile) =>
       profile.role === "worker" &&
@@ -587,7 +590,7 @@ export function ScheduleTools({
         rotationPeriodUnit: String(
           form.get("rotationPeriodUnit") ?? settings.rotation_period_unit,
         ),
-        gracePeriodDays: Number(form.get("gracePeriodDays") ?? settings.grace_period_days),
+        gracePeriodDays: Number(gracePeriodDays || 0),
       });
     });
   }
@@ -599,6 +602,7 @@ export function ScheduleTools({
       await postJson("/api/admin/regenerate-schedule", {
         startDate: String(form.get("startDate") ?? ""),
         endDate: String(form.get("endDate") ?? ""),
+        gracePeriodDays: Number(gracePeriodDays || 0),
       });
     });
   }
@@ -676,7 +680,8 @@ export function ScheduleTools({
           <input
             className="h-10 rounded-md border px-3"
             name="gracePeriodDays"
-            defaultValue={settings.grace_period_days}
+            value={gracePeriodDays}
+            onChange={(event) => setGracePeriodDays(event.target.value)}
             type="number"
             min={0}
             max={14}
