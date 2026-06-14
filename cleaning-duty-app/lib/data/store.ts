@@ -1133,6 +1133,38 @@ export async function listDuties(limit = 52, descending = true) {
     .map((row) => asDuty(row as Record<string, unknown>));
 }
 
+export async function listAllDuties() {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const pageSize = 1000;
+    const duties: DutyPeriod[] = [];
+
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from("duty_periods")
+        .select("*")
+        .order("week_start", { ascending: true })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+
+      const page = (data ?? []) as DutyPeriod[];
+      duties.push(...page);
+
+      if (page.length < pageSize) {
+        break;
+      }
+    }
+
+    return duties;
+  }
+
+  return getLocalDb()
+    .prepare(`select * from duty_periods order by week_start asc`)
+    .all()
+    .map((row) => asDuty(row as Record<string, unknown>));
+}
+
 export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8) {
   if (!isLocalBackend()) {
     const upcoming = await sbList<DutyPeriod>((supabase) =>
