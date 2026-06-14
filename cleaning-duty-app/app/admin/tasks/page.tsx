@@ -1,4 +1,5 @@
 import { TaskForm } from "@/components/admin/admin-forms";
+import { TaskRoomTabs } from "@/components/admin/task-room-tabs";
 import { hasDutySchedule, listRooms, listTasks } from "@/lib/data/store";
 import type { Room, Task } from "@/lib/types";
 
@@ -22,11 +23,7 @@ export default async function AdminTasksPage() {
         <p className="mt-1 text-stone-600">Роботи прив&apos;язані до кімнат і сортуються всередині них.</p>
       </div>
       <TaskForm rooms={roomList.filter((room) => room.is_active)} scheduleLocked={scheduleLocked} />
-      <div className="grid gap-3">
-        {taskList.map((task) => (
-          <TaskForm key={task.id} rooms={roomList} task={task} scheduleLocked={scheduleLocked} />
-        ))}
-      </div>
+      <TaskRoomTabs rooms={roomList} tasks={taskList} scheduleLocked={scheduleLocked} />
     </div>
   );
 }
