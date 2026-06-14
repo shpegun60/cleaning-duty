@@ -8,6 +8,7 @@ import {
   getAppSettings,
   insertDutyPeriod,
   loadDutyPeriod,
+  realignScheduledDutiesAfter,
   resolveNextAssignee,
   updateDutyPeriod,
   writeAuditLog,
@@ -18,7 +19,7 @@ const AcceptHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
 });
 
-const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_for_recheck"];
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",
@@ -54,6 +55,9 @@ export async function POST(request: Request) {
       status: "accepted",
       accepted_at: new Date().toISOString(),
       accepted_by: user.id,
+      rejected_at: null,
+      rejected_by: null,
+      reject_comment: null,
     });
 
     const settings = await getAppSettings();
@@ -65,6 +69,8 @@ export async function POST(request: Request) {
     );
     const nextAssignee = await resolveNextAssignee(receivingAssigneeId);
     const existingNext = await findDutyByWeekStart(nextPeriodStart);
+
+    const nextPeriodDutyId: string | null = existingNext?.id ?? null;
 
     if (existingNext) {
       if (existingNext.status !== "scheduled") {
@@ -86,6 +92,10 @@ export async function POST(request: Request) {
         createdBy: user.id,
       });
     }
+    const futureRealignment = await realignScheduledDutiesAfter(
+      nextPeriodStart,
+      nextAssignee.id,
+    );
 
     await writeAuditLog({
       actorId: user.id,
@@ -95,8 +105,10 @@ export async function POST(request: Request) {
       payload: {
         nextPeriodStart,
         nextPeriodEnd,
+        nextPeriodDutyId,
         receivingAssigneeId,
         nextAssigneeId: nextAssignee.id,
+        futureRealignment,
       },
     });
 

@@ -16,7 +16,7 @@ const RoomCheckSchema = z.object({
   isAccepted: z.boolean(),
 });
 
-const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_for_recheck"];
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       throw conflict("Duty status does not allow handover checks");
     }
 
-    if (isAdmin && duty.status === "cleaning_done") {
+    if (duty.status === "cleaning_done") {
       await updateDutyPeriod(duty.id, {
         status: "handover_pending",
         handover_started_at: new Date().toISOString(),

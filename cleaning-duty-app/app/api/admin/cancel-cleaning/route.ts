@@ -6,6 +6,7 @@ import {
   clearTaskChecksForDuty,
   loadDutyPeriod,
   revertFutureActiveNextDutyIfPristine,
+  restoreScheduledRotationAfterCancelledHandover,
   statusAfterCleaningCancellation,
   updateDutyPeriod,
   writeAuditLog,
@@ -37,6 +38,9 @@ export async function POST(request: Request) {
     }
 
     const nextDutyRollback = await revertFutureActiveNextDutyIfPristine(duty, localDate);
+    const scheduleRestore = ["rejected", "ready_for_recheck"].includes(duty.status)
+      ? await restoreScheduledRotationAfterCancelledHandover(duty)
+      : null;
     await clearRoomAcceptancesForDuty(duty.id);
     await clearTaskChecksForDuty(duty.id);
     await updateDutyPeriod(duty.id, {
@@ -58,6 +62,7 @@ export async function POST(request: Request) {
       payload: {
         previousStatus: duty.status,
         nextDutyRollback,
+        scheduleRestore,
       },
     });
 

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/guards";
 import { readRuntimeConfig } from "@/lib/config/runtime";
 import {
   createNotificationIfMissing,
+  delayScheduledRotationAfterRejectedHandover,
   loadActiveRoom,
   loadDutyPeriod,
   loadProfile,
@@ -23,7 +24,7 @@ const RejectHandoverSchema = z.object({
   comment: z.string().trim().min(5),
 });
 
-const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_for_recheck"];
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",
@@ -65,11 +66,13 @@ export async function POST(request: Request) {
     }
 
     await updateDutyPeriod(duty.id, {
-        status: "rejected",
-        rejected_by: user.id,
-        rejected_at: now,
-        reject_comment: body.comment,
+      status: "rejected",
+      handover_started_at: duty.handover_started_at ?? now,
+      rejected_by: user.id,
+      rejected_at: now,
+      reject_comment: body.comment,
     });
+    const scheduleShift = await delayScheduledRotationAfterRejectedHandover(duty);
 
     const assignee = await loadProfile(duty.assignee_id);
     const notification = await createNotificationIfMissing({
@@ -98,7 +101,10 @@ export async function POST(request: Request) {
       action: "handover_rejected",
       entityType: "duty_period",
       entityId: duty.id,
-      payload: body,
+      payload: {
+        ...body,
+        scheduleShift,
+      },
     });
 
     return Response.json({ ok: true });

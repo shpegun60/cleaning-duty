@@ -383,9 +383,17 @@ export function ScheduleCalendar({
                 {isHandoverDay && duty ? (
                   <Link
                     href={`/handover/${duty.id}`}
-                    className="mt-2 block truncate rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-200"
+                    className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
                   >
-                    {handoverLabel(duty, nextAssignee)}
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="truncate">{handoverDisplayLabel(duty, nextAssignee)}</span>
+                      <StatusBadge status={duty.status} />
+                    </span>
+                    {duty.reject_comment ? (
+                      <span className="mt-1 block truncate text-[11px] font-medium">
+                        {duty.reject_comment}
+                      </span>
+                    ) : null}
                   </Link>
                 ) : null}
               </div>
@@ -551,6 +559,43 @@ function handoverLabel(duty: DutyPeriod | undefined, nextAssignee: Profile | und
   }
 
   return `Передача -> ${nextAssignee.full_name}`;
+}
+
+function handoverDisplayLabel(
+  duty: DutyPeriod | undefined,
+  nextAssignee: Profile | undefined | null,
+) {
+  if (!duty || !nextAssignee) return handoverLabel(duty, nextAssignee);
+
+  if (duty.status === "accepted") {
+    return `Прийнято -> ${nextAssignee.full_name}`;
+  }
+
+  if (duty.status === "rejected") {
+    return `Не прийнято -> ${nextAssignee.full_name}`;
+  }
+
+  if (duty.status === "ready_for_recheck") {
+    return `Повторна перевірка -> ${nextAssignee.full_name}`;
+  }
+
+  if (duty.status === "handover_pending") {
+    return `Очікує приймання -> ${nextAssignee.full_name}`;
+  }
+
+  return handoverLabel(duty, nextAssignee);
+}
+
+function handoverClassName(status: DutyPeriod["status"]) {
+  if (status === "accepted") {
+    return "border-emerald-300 bg-emerald-100 text-emerald-950 hover:bg-emerald-200";
+  }
+
+  if (status === "rejected") {
+    return "border-red-300 bg-red-100 text-red-950 hover:bg-red-200";
+  }
+
+  return "border-amber-300 bg-amber-100 text-amber-950 hover:bg-amber-200";
 }
 
 function dutyForDay(duties: DutyPeriod[], dateKey: string) {

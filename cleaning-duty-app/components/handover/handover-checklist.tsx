@@ -13,7 +13,11 @@ type RoomItem = {
   isAccepted: boolean;
 };
 
-const WORKER_HANDOVER_STATUSES: DutyStatus[] = ["handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES: DutyStatus[] = [
+  "cleaning_done",
+  "handover_pending",
+  "ready_for_recheck",
+];
 const ADMIN_HANDOVER_STATUSES: DutyStatus[] = [
   "cleaning_done",
   "handover_pending",

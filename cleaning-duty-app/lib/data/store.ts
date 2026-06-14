@@ -1441,6 +1441,76 @@ export async function deleteFutureScheduledDuties(startWeek: string) {
     .run(startWeek);
 }
 
+async function listScheduledDutiesAfter(startWeek: string) {
+  if (!isLocalBackend()) {
+    return sbList<DutyPeriod>((supabase) =>
+      supabase
+        .from("duty_periods")
+        .select("*")
+        .eq("status", "scheduled")
+        .gt("week_start", startWeek)
+        .order("week_start", { ascending: true }),
+    );
+  }
+
+  return getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status = 'scheduled'
+         and week_start > ?
+       order by week_start asc`,
+    )
+    .all(startWeek)
+    .map((row) => asDuty(row as Record<string, unknown>));
+}
+
+export async function realignScheduledDutiesAfter(
+  startWeek: string,
+  firstAssigneeId: string,
+) {
+  const users = await listActiveRotationProfiles();
+
+  if (users.length < 2) {
+    return { updated: 0, skipped: true };
+  }
+
+  const duties = await listScheduledDutiesAfter(startWeek);
+  let assigneeId = firstAssigneeId;
+  let updated = 0;
+
+  for (const duty of duties) {
+    const nextAssignee = getNextRotationUser(users, assigneeId);
+
+    if (
+      duty.assignee_id !== assigneeId ||
+      duty.next_assignee_id !== nextAssignee.id
+    ) {
+      await updateDutyPeriod(duty.id, {
+        assignee_id: assigneeId,
+        next_assignee_id: nextAssignee.id,
+      });
+      updated += 1;
+    }
+
+    assigneeId = nextAssignee.id;
+  }
+
+  return { updated, skipped: false };
+}
+
+export async function delayScheduledRotationAfterRejectedHandover(duty: DutyPeriod) {
+  return realignScheduledDutiesAfter(duty.week_start, duty.assignee_id);
+}
+
+export async function restoreScheduledRotationAfterCancelledHandover(
+  duty: Pick<DutyPeriod, "week_start" | "assignee_id" | "next_assignee_id">,
+) {
+  const firstAssigneeId =
+    duty.next_assignee_id ?? (await resolveNextAssignee(duty.assignee_id)).id;
+
+  return realignScheduledDutiesAfter(duty.week_start, firstAssigneeId);
+}
+
 export async function clearDutySchedule() {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();

@@ -62,7 +62,7 @@ export default async function AdminDashboardPage() {
           {(duties as DutyPeriod[]).map((duty) => (
             <Link
               key={duty.id}
-              className="grid gap-2 rounded-md border border-amber-100 p-3 hover:bg-amber-50 sm:grid-cols-[0.8fr_1fr_1fr_auto]"
+              className="grid gap-2 rounded-md border border-amber-100 p-3 hover:bg-amber-50 sm:grid-cols-[0.8fr_1fr_1fr_auto_auto]"
               href={`/handover/${duty.id}`}
             >
               <span>
@@ -86,6 +86,14 @@ export default async function AdminDashboardPage() {
                     ? profileMap.get(duty.next_assignee_id)?.full_name ?? duty.next_assignee_id
                     : "Не задано"}
                 </span>
+                {duty.reject_comment ? (
+                  <span className="mt-1 block truncate text-xs text-red-700">
+                    {duty.reject_comment}
+                  </span>
+                ) : null}
+              </span>
+              <span className="self-center">
+                <StatusBadge status={duty.status} />
               </span>
               <span className="rounded-md border border-stone-300 bg-white px-3 py-2 text-center text-sm font-semibold">
                 Відкрити
