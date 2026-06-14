@@ -559,12 +559,14 @@ export async function assertScheduleIsEmptyForRosterConfig() {
 
 export async function updateProfile(params: {
   userId: string;
+  email?: string;
   fullName: string;
   role: "admin" | "worker";
   rotationOrder: number | null;
   isActive: boolean;
 }) {
   const existing = await loadProfile(params.userId);
+  const email = params.email?.trim() ?? existing.email;
 
   if (existing.id === "local-admin" && (params.role !== "admin" || !params.isActive)) {
     throw forbidden("Local admin cannot be demoted or deactivated");
@@ -580,9 +582,21 @@ export async function updateProfile(params: {
 
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
+    if (email !== existing.email || params.fullName !== existing.full_name) {
+      const { error: userError } = await supabase.auth.admin.updateUserById(params.userId, {
+        email,
+        email_confirm: true,
+        user_metadata: {
+          full_name: params.fullName,
+        },
+      });
+      if (userError) throw userError;
+    }
+
     const { error } = await supabase
       .from("profiles")
       .update({
+        email,
         full_name: params.fullName,
         role: params.role,
         rotation_order: rotationOrder,
@@ -596,10 +610,11 @@ export async function updateProfile(params: {
   getLocalDb()
     .prepare(
       `update profiles
-       set full_name = ?, role = ?, rotation_order = ?, is_active = ?, updated_at = ?
+       set email = ?, full_name = ?, role = ?, rotation_order = ?, is_active = ?, updated_at = ?
        where id = ?`,
     )
     .run(
+      email,
       params.fullName,
       params.role,
       rotationOrder,

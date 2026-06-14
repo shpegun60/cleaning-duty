@@ -101,10 +101,12 @@ export function UserEditForm({
     await run(async () => {
       await postJson("/api/admin/users/update-profile", {
         userId: profile.id,
+        email: String(form.get("email") ?? ""),
         fullName: String(form.get("fullName") ?? ""),
         role: String(form.get("role") ?? "worker"),
         rotationOrder: intOrNull(form.get("rotationOrder")),
         isActive: form.get("isActive") === "on",
+        password: String(form.get("password") ?? ""),
       });
     });
   }
@@ -124,16 +126,36 @@ export function UserEditForm({
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <div>
-        <p className="font-semibold">{profile.email}</p>
+        <p className="font-semibold">{profile.full_name}</p>
         <p className="text-xs text-stone-500">{profile.id}</p>
       </div>
       <label className="grid gap-1 text-sm">
-        Пароль
+        Email
+        <input
+          className="h-10 rounded-md border px-3"
+          name="email"
+          defaultValue={profile.email}
+          type="email"
+          required
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        Поточний пароль
         <input
           className="h-10 rounded-md border bg-stone-50 px-3 font-mono text-sm"
           readOnly
           value={profile.login_password ?? ""}
           placeholder="не задано"
+        />
+      </label>
+      <label className="grid gap-1 text-sm">
+        Новий пароль
+        <input
+          autoComplete="new-password"
+          className="h-10 rounded-md border px-3 font-mono text-sm"
+          name="password"
+          placeholder="залиш пустим, щоб не міняти"
+          type="text"
         />
       </label>
       <input className="h-10 rounded-md border px-3" name="fullName" defaultValue={profile.full_name} required />
