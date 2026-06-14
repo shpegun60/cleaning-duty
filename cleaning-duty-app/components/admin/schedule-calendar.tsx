@@ -46,6 +46,18 @@ const dutyStyles = [
   "border-cyan-200 bg-cyan-50 text-cyan-950",
 ];
 
+const closedDutyStatuses = new Set<DutyPeriod["status"]>([
+  "accepted",
+  "force_closed",
+  "cancelled",
+]);
+
+type CalendarMetric = {
+  label: string;
+  value: string;
+  detail?: string;
+};
+
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
     method: "POST",
@@ -150,6 +162,82 @@ export function ScheduleCalendar({
   const todayKey = format(new Date(), "yyyy-MM-dd");
   const rangeLengthDays = differenceInCalendarDays(viewEndDate, viewStartDate) + 1;
   const editingDuty = editingDutyId ? dutyMap.get(editingDutyId) ?? null : null;
+  const visibleDuties = useMemo(
+    () =>
+      duties.filter((duty) => duty.week_start <= viewEnd && duty.week_end >= viewStart),
+    [duties, viewEnd, viewStart],
+  );
+  const visibleDutyIds = useMemo(
+    () => new Set(visibleDuties.map((duty) => duty.id)),
+    [visibleDuties],
+  );
+  const visibleChanges = useMemo(
+    () => changes.filter((change) => visibleDutyIds.has(change.duty_period_id)),
+    [changes, visibleDutyIds],
+  );
+  const visibleHandovers = visibleDuties.filter(
+    (duty) => duty.week_end >= viewStart && duty.week_end <= viewEnd,
+  );
+  const acceptedDuties = visibleDuties.filter((duty) => duty.status === "accepted");
+  const remainingDuties = visibleDuties.filter(
+    (duty) => !closedDutyStatuses.has(duty.status),
+  );
+  const cancelledOrClosedDuties = visibleDuties.filter(
+    (duty) => duty.status === "cancelled" || duty.status === "force_closed",
+  );
+  const dutyStarts = visibleDuties.map((duty) => duty.week_start).sort();
+  const dutyEnds = visibleDuties.map((duty) => duty.week_end).sort();
+  const myDutyCount = viewerUserId
+    ? visibleDuties.filter((duty) => duty.assignee_id === viewerUserId).length
+    : 0;
+  const myHandoverCount = viewerUserId
+    ? visibleHandovers.filter((duty) => {
+        const nextAssigneeId =
+          duty.next_assignee_id ?? nextDutyById.get(duty.id)?.assignee_id ?? null;
+        return nextAssigneeId === viewerUserId;
+      }).length
+    : 0;
+  const calendarMetrics: CalendarMetric[] = [
+    {
+      label: "Видимий діапазон",
+      value: formatDateRange(viewStart, viewEnd),
+      detail: `${rangeLengthDays} днів`,
+    },
+    {
+      label: "Чергувань у діапазоні",
+      value: String(visibleDuties.length),
+      detail: `${visibleHandovers.length} передач`,
+    },
+    {
+      label: "Залишилось",
+      value: String(remainingDuties.length),
+      detail: "ще не закрито",
+    },
+    {
+      label: "Прийнято",
+      value: String(acceptedDuties.length),
+      detail: `${cancelledOrClosedDuties.length} скасовано/закрито`,
+    },
+    {
+      label: "Заміни",
+      value: String(visibleChanges.length),
+      detail: "активні у цьому діапазоні",
+    },
+    {
+      label: "Покриття графіка",
+      value: formatDateRange(dutyStarts[0] ?? null, dutyEnds[dutyEnds.length - 1] ?? null),
+      detail: visibleDuties.length > 0 ? "за duty periods" : "немає записів",
+    },
+  ];
+
+  if (viewerUserId) {
+    calendarMetrics.push({
+      label: "Мої дії",
+      value: String(myDutyCount + myHandoverCount),
+      detail: `${myDutyCount} робіт / ${myHandoverCount} приймань`,
+    });
+  }
+
   const defaultNewAssigneeId =
     activeRotationWorkers.find((profile) => profile.id !== editingDuty?.assignee_id)?.id ?? "";
 
@@ -309,8 +397,10 @@ export function ScheduleCalendar({
         </div>
       </div>
 
+      <CalendarTelemetry metrics={calendarMetrics} />
+
       <div className="overflow-x-auto">
-        <div className="grid min-w-[780px] grid-cols-7 rounded-md border border-stone-200">
+        <div className="grid min-w-[860px] grid-cols-7 rounded-md border border-stone-200">
           {dayLabels.map((label) => (
             <div
               key={label}
@@ -334,7 +424,7 @@ export function ScheduleCalendar({
               readOnly && viewerUserId && duty?.assignee_id === viewerUserId,
             );
             const canOpenOwnHandover = Boolean(
-              readOnly && viewerUserId && duty?.next_assignee_id === viewerUserId,
+              readOnly && viewerUserId && nextAssigneeId === viewerUserId,
             );
             const style = duty
               ? isChanged
@@ -345,7 +435,7 @@ export function ScheduleCalendar({
             return (
               <div
                 key={dateKey}
-                className={`min-h-36 border-b border-r border-stone-200 p-2 ${
+                className={`min-h-40 min-w-0 border-b border-r border-stone-200 p-2 ${
                   isInViewRange ? "bg-white" : "bg-stone-50 text-stone-400"
                 } ${dateKey === todayKey ? "ring-2 ring-emerald-600 ring-inset" : ""}`}
               >
@@ -358,40 +448,40 @@ export function ScheduleCalendar({
                   ) : null}
                 </div>
                 {duty ? (
-                  <div className={`rounded-md border px-2 py-1.5 text-xs ${style}`}>
+                  <div className={`min-w-0 overflow-hidden rounded-md border px-2 py-1.5 text-xs ${style}`}>
                     {canOpenOwnDuty ? (
                       <Link href={`/duty/${duty.id}`} className="block rounded-sm hover:underline">
-                        <span className="block truncate font-semibold">
+                        <span className="block font-semibold leading-tight [overflow-wrap:anywhere]">
                           {assignee?.full_name ?? duty.assignee_id}
                         </span>
-                        <span className="block truncate opacity-80">
+                        <span className="mt-1 block text-[11px] leading-tight opacity-80 [overflow-wrap:anywhere]">
                           {duty.week_start} - {duty.week_end}
                         </span>
-                        <span className="mt-1 inline-flex rounded-md bg-white/80 px-1.5 py-0.5 text-[11px] font-semibold">
+                        <span className="mt-1 inline-flex max-w-full rounded-md bg-white/80 px-1.5 py-0.5 text-[11px] font-semibold leading-tight">
                           Роботи
                         </span>
                       </Link>
                     ) : readOnly ? (
                       <span className="block">
-                        <span className="block truncate font-semibold">
+                        <span className="block font-semibold leading-tight [overflow-wrap:anywhere]">
                           {assignee?.full_name ?? duty.assignee_id}
                         </span>
-                        <span className="block truncate opacity-80">
+                        <span className="mt-1 block text-[11px] leading-tight opacity-80 [overflow-wrap:anywhere]">
                           {duty.week_start} - {duty.week_end}
                         </span>
                       </span>
                     ) : (
                       <Link href={`/duty/${duty.id}`} className="block">
-                        <span className="block truncate font-semibold">
+                        <span className="block font-semibold leading-tight [overflow-wrap:anywhere]">
                           {assignee?.full_name ?? duty.assignee_id}
                         </span>
-                        <span className="block truncate opacity-80">
+                        <span className="mt-1 block text-[11px] leading-tight opacity-80 [overflow-wrap:anywhere]">
                           {duty.week_start} - {duty.week_end}
                         </span>
                       </Link>
                     )}
                     {isChanged ? (
-                      <span className="mt-1 inline-flex rounded-md bg-fuchsia-200 px-1.5 py-0.5 text-[11px] font-semibold text-fuchsia-950">
+                      <span className="mt-1 inline-flex max-w-full rounded-md bg-fuchsia-200 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-fuchsia-950">
                         Змінено
                       </span>
                     ) : null}
@@ -399,7 +489,7 @@ export function ScheduleCalendar({
                       <div className="mt-2 grid gap-1">
                         <button
                           type="button"
-                          className="min-h-8 w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-stone-900 hover:bg-stone-100"
+                          className="min-h-8 w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-stone-900 hover:bg-stone-100 [overflow-wrap:anywhere]"
                           onClick={() => setEditingDutyId(duty.id)}
                           disabled={busy || activeRotationWorkers.length < 2}
                         >
@@ -408,7 +498,7 @@ export function ScheduleCalendar({
                         {latestChange ? (
                           <button
                             type="button"
-                            className="min-h-8 w-full rounded-md border border-red-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-red-800 hover:bg-red-50"
+                            className="min-h-8 w-full rounded-md border border-red-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-red-800 hover:bg-red-50 [overflow-wrap:anywhere]"
                             onClick={() => revertChange(latestChange.id)}
                             disabled={busy}
                           >
@@ -423,20 +513,20 @@ export function ScheduleCalendar({
                   readOnly && canOpenOwnHandover ? (
                     <Link
                       href={`/handover/${duty.id}`}
-                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                      className={`mt-2 block min-w-0 overflow-hidden rounded-md border px-2 py-1 text-xs font-semibold leading-tight ${handoverClassName(duty.status)}`}
                     >
                       <HandoverContent duty={duty} nextAssignee={nextAssignee} />
                     </Link>
                   ) : readOnly ? (
                     <div
-                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                      className={`mt-2 block min-w-0 overflow-hidden rounded-md border px-2 py-1 text-xs font-semibold leading-tight ${handoverClassName(duty.status)}`}
                     >
                       <HandoverContent duty={duty} nextAssignee={nextAssignee} />
                     </div>
                   ) : (
                     <Link
                       href={`/handover/${duty.id}`}
-                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                      className={`mt-2 block min-w-0 overflow-hidden rounded-md border px-2 py-1 text-xs font-semibold leading-tight ${handoverClassName(duty.status)}`}
                     >
                       <HandoverContent duty={duty} nextAssignee={nextAssignee} />
                     </Link>
@@ -519,6 +609,28 @@ export function ScheduleCalendar({
   );
 }
 
+function CalendarTelemetry({ metrics }: { metrics: CalendarMetric[] }) {
+  return (
+    <dl className="mb-4 grid gap-x-4 gap-y-3 border-y border-stone-200 bg-stone-50 px-3 py-3 sm:grid-cols-2 lg:grid-cols-4">
+      {metrics.map((metric) => (
+        <div key={metric.label} className="min-w-0">
+          <dt className="text-xs font-semibold uppercase text-stone-500 [overflow-wrap:anywhere]">
+            {metric.label}
+          </dt>
+          <dd className="mt-1 text-base font-semibold leading-tight text-stone-950 [overflow-wrap:anywhere]">
+            {metric.value}
+          </dd>
+          {metric.detail ? (
+            <dd className="mt-1 text-xs leading-tight text-stone-600 [overflow-wrap:anywhere]">
+              {metric.detail}
+            </dd>
+          ) : null}
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function AssigneeChangesTable({
   changes,
   dutyMap,
@@ -559,7 +671,7 @@ function AssigneeChangesTable({
                 <span className="block text-xs font-medium uppercase text-stone-500">
                   Період
                 </span>
-                <span className="block font-semibold">
+                <span className="block font-semibold [overflow-wrap:anywhere]">
                   {duty ? `${duty.week_start} - ${duty.week_end}` : change.duty_period_id}
                 </span>
               </span>
@@ -567,7 +679,7 @@ function AssigneeChangesTable({
                 <span className="block text-xs font-medium uppercase text-stone-500">
                   Заміна
                 </span>
-                <span className="block">
+                <span className="block [overflow-wrap:anywhere]">
                   {profileName(profileMap, change.previous_assignee_id)} {"->"}{" "}
                   {profileName(profileMap, change.new_assignee_id)}
                 </span>
@@ -576,12 +688,12 @@ function AssigneeChangesTable({
                 <span className="block text-xs font-medium uppercase text-stone-500">
                   Причина
                 </span>
-                <span className="block">{change.reason}</span>
+                <span className="block [overflow-wrap:anywhere]">{change.reason}</span>
               </span>
               {!readOnly ? (
                 <button
                   type="button"
-                  className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold leading-tight text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 [overflow-wrap:anywhere]"
                   onClick={() => onRevert(change.id)}
                   disabled={busy || !isLatest}
                   title={isLatest ? "Відмінити зміну" : "Спочатку відміни новішу зміну цього періоду"}
@@ -606,12 +718,16 @@ function HandoverContent({
 }) {
   return (
     <>
-      <span className="flex items-center justify-between gap-2">
-        <span className="truncate">{handoverDisplayLabel(duty, nextAssignee)}</span>
-        <StatusBadge status={duty.status} />
+      <span className="grid min-w-0 gap-1">
+        <span className="[overflow-wrap:anywhere]">
+          {handoverDisplayLabel(duty, nextAssignee)}
+        </span>
+        <span className="min-w-0">
+          <StatusBadge status={duty.status} />
+        </span>
       </span>
       {duty.reject_comment ? (
-        <span className="mt-1 block truncate text-[11px] font-medium">
+        <span className="mt-1 block text-[11px] font-medium leading-tight [overflow-wrap:anywhere]">
           {duty.reject_comment}
         </span>
       ) : null}
@@ -634,6 +750,18 @@ function calendarUrl(
 function profileName(profileMap: Map<string, Profile>, profileId: string | null) {
   if (!profileId) return "Не задано";
   return profileMap.get(profileId)?.full_name ?? profileId;
+}
+
+function formatDateRange(startDate: string | null, endDate: string | null) {
+  if (!startDate || !endDate) {
+    return "Немає";
+  }
+
+  if (startDate === endDate) {
+    return startDate;
+  }
+
+  return `${startDate} - ${endDate}`;
 }
 
 function handoverLabel(duty: DutyPeriod | undefined, nextAssignee: Profile | undefined | null) {

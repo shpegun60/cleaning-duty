@@ -20,7 +20,7 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <span
       className={clsx(
-        "inline-flex items-center rounded-md px-2 py-1 text-xs font-semibold",
+        "inline-flex max-w-full items-center justify-center rounded-md px-2 py-1 text-center text-xs font-semibold leading-tight whitespace-normal [overflow-wrap:anywhere]",
         ["active", "sent", "accepted"].includes(status) &&
           "bg-emerald-100 text-emerald-800",
         ["rejected", "failed"].includes(status) && "bg-red-100 text-red-800",
