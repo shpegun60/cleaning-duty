@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createBrowserClient } from "@supabase/ssr";
 
 import { Button } from "@/components/ui/button";
 
@@ -51,16 +50,18 @@ export function LoginForm({
         throw new Error("Supabase mode selected, but public Supabase config is missing");
       }
 
-      const email = String(form.get("email") ?? "");
-      const password = String(form.get("password") ?? "");
-      const supabase = createBrowserClient(supabaseUrl, supabasePublishableKey);
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email: String(form.get("email") ?? ""),
+          password: String(form.get("password") ?? ""),
+        }),
       });
+      const payload = await response.json().catch(() => ({}));
 
-      if (error) {
-        throw error;
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Login failed");
       }
 
       router.push("/dashboard");
