@@ -62,6 +62,7 @@ export function DashboardTabs({
           isCustomRange={isCustomRange}
           changes={changes}
           readOnly
+          viewerUserId={user.id}
           pagePath="/dashboard"
           extraQuery={{ tab: "calendar" }}
         />

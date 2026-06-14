@@ -73,6 +73,7 @@ export function ScheduleCalendar({
   readOnly = false,
   pagePath = "/admin/schedule",
   extraQuery,
+  viewerUserId,
 }: {
   duties: DutyPeriod[];
   profiles: Profile[];
@@ -84,6 +85,7 @@ export function ScheduleCalendar({
   readOnly?: boolean;
   pagePath?: string;
   extraQuery?: Record<string, string>;
+  viewerUserId?: string;
 }) {
   const router = useRouter();
   const [editingDutyId, setEditingDutyId] = useState<string | null>(null);
@@ -328,6 +330,12 @@ export function ScheduleCalendar({
             const isInViewRange = day >= viewStartDate && day <= viewEndDate;
             const isHandoverDay = duty?.week_end === dateKey;
             const isChanged = duty ? changedDutyIds.has(duty.id) : false;
+            const canOpenOwnDuty = Boolean(
+              readOnly && viewerUserId && duty?.assignee_id === viewerUserId,
+            );
+            const canOpenOwnHandover = Boolean(
+              readOnly && viewerUserId && duty?.next_assignee_id === viewerUserId,
+            );
             const style = duty
               ? isChanged
                 ? "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-950"
@@ -351,7 +359,19 @@ export function ScheduleCalendar({
                 </div>
                 {duty ? (
                   <div className={`rounded-md border px-2 py-1.5 text-xs ${style}`}>
-                    {readOnly ? (
+                    {canOpenOwnDuty ? (
+                      <Link href={`/duty/${duty.id}`} className="block rounded-sm hover:underline">
+                        <span className="block truncate font-semibold">
+                          {assignee?.full_name ?? duty.assignee_id}
+                        </span>
+                        <span className="block truncate opacity-80">
+                          {duty.week_start} - {duty.week_end}
+                        </span>
+                        <span className="mt-1 inline-flex rounded-md bg-white/80 px-1.5 py-0.5 text-[11px] font-semibold">
+                          Роботи
+                        </span>
+                      </Link>
+                    ) : readOnly ? (
                       <span className="block">
                         <span className="block truncate font-semibold">
                           {assignee?.full_name ?? duty.assignee_id}
@@ -400,7 +420,14 @@ export function ScheduleCalendar({
                   </div>
                 ) : null}
                 {isHandoverDay && duty ? (
-                  readOnly ? (
+                  readOnly && canOpenOwnHandover ? (
+                    <Link
+                      href={`/handover/${duty.id}`}
+                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                    >
+                      <HandoverContent duty={duty} nextAssignee={nextAssignee} />
+                    </Link>
+                  ) : readOnly ? (
                     <div
                       className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
                     >
