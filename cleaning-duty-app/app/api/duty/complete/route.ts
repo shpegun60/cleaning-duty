@@ -16,6 +16,8 @@ const CompleteDutySchema = z.object({
   dutyPeriodId: z.string().uuid(),
 });
 
+const CLEANING_COMPLETION_STATUSES = ["active", "rejected", "ready_for_recheck"];
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -35,7 +37,7 @@ export async function POST(request: Request) {
       throw conflict("Duty is outside the assignee date range");
     }
 
-    if (!isAdmin && !["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
+    if (!CLEANING_COMPLETION_STATUSES.includes(duty.status)) {
       throw conflict("Duty status does not allow completion");
     }
 

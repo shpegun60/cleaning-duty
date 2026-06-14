@@ -22,9 +22,20 @@ type RoomGroup = {
 const CLEANING_CANCEL_STATUSES: DutyStatus[] = [
   "cleaning_done",
   "handover_pending",
+  "accepted",
   "rejected",
   "ready_for_recheck",
 ];
+const WORKER_TASK_EDIT_STATUSES: DutyStatus[] = ["active", "rejected", "ready_for_recheck"];
+const ADMIN_TASK_EDIT_STATUSES: DutyStatus[] = [
+  "scheduled",
+  "active",
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
+const CLEANING_COMPLETION_STATUSES: DutyStatus[] = ["active", "rejected", "ready_for_recheck"];
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
@@ -65,15 +76,20 @@ export function DutyChecklist({
   );
   const [message, setMessage] = useState<string | null>(null);
   const canEdit =
-    canOverride ||
+    (canOverride && ADMIN_TASK_EDIT_STATUSES.includes(status)) ||
     (isAssignee &&
       isWithinDutyPeriod &&
-      ["active", "rejected", "ready_for_recheck"].includes(status));
+      WORKER_TASK_EDIT_STATUSES.includes(status));
   const canCancelCleaning = canOverride && CLEANING_CANCEL_STATUSES.includes(status);
   const allChecked = useMemo(
     () => groups.every((group) => group.tasks.every((task) => checked.get(task.id))),
     [checked, groups],
   );
+  const canComplete =
+    canEdit &&
+    allChecked &&
+    (canOverride || isWithinDutyPeriod) &&
+    CLEANING_COMPLETION_STATUSES.includes(status);
 
   async function toggleTask(taskId: string, isChecked: boolean) {
     const next = new Map(checked);
@@ -168,7 +184,7 @@ export function DutyChecklist({
         </section>
       ))}
       <div className="flex flex-wrap gap-3">
-        <Button disabled={!canEdit || !allChecked} onClick={complete} type="button">
+        <Button disabled={!canComplete} onClick={complete} type="button">
           Завершити прибирання
         </Button>
         {status === "rejected" ? (

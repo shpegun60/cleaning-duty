@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
-import { weekEndFromStart } from "@/lib/domain/dates";
+import { addDaysToDateKey, weekEndFromStart } from "@/lib/domain/dates";
 import { badRequest, conflict, forbidden } from "@/lib/http";
 import { getLocalDb, mapBooleanFields, nowIso } from "@/lib/local/sqlite";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -1539,6 +1539,22 @@ export async function listTaskChecks(dutyPeriodId: string) {
     .map((row) => asTaskCheck(row as Record<string, unknown>));
 }
 
+export async function clearTaskChecksForDuty(dutyPeriodId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase
+      .from("task_checks")
+      .delete()
+      .eq("duty_period_id", dutyPeriodId);
+    if (error) throw error;
+    return;
+  }
+
+  getLocalDb()
+    .prepare("delete from task_checks where duty_period_id = ?")
+    .run(dutyPeriodId);
+}
+
 export async function upsertTaskCheck(params: {
   dutyPeriodId: string;
   taskId: string;
@@ -1609,6 +1625,48 @@ export async function clearRoomAcceptancesForDuty(dutyPeriodId: string) {
   getLocalDb()
     .prepare("delete from room_acceptances where duty_period_id = ?")
     .run(dutyPeriodId);
+}
+
+export function statusAfterCleaningCancellation(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+) {
+  return isDateWithinDutyPeriod(duty, localDate) ? "active" : "scheduled";
+}
+
+export async function revertFutureActiveNextDutyIfPristine(
+  duty: Pick<DutyPeriod, "week_end">,
+  localDate: string,
+) {
+  const nextPeriodStart = addDaysToDateKey(duty.week_end, 1);
+  const nextDuty = await findDutyByWeekStart(nextPeriodStart);
+
+  if (!nextDuty || nextDuty.status !== "active" || nextDuty.week_start <= localDate) {
+    return { reverted: false, dutyId: nextDuty?.id ?? null };
+  }
+
+  const [checks, acceptances] = await Promise.all([
+    listTaskChecks(nextDuty.id),
+    listRoomAcceptances(nextDuty.id),
+  ]);
+  const hasBlockingProgress =
+    acceptances.length > 0 ||
+    Boolean(
+      nextDuty.cleaned_at ||
+        nextDuty.handover_started_at ||
+        nextDuty.accepted_at ||
+        nextDuty.rejected_at,
+    );
+
+  if (hasBlockingProgress) {
+    return { reverted: false, dutyId: nextDuty.id, clearedTaskChecks: 0 };
+  }
+
+  if (checks.length > 0) {
+    await clearTaskChecksForDuty(nextDuty.id);
+  }
+  await updateDutyPeriod(nextDuty.id, { status: "scheduled" });
+  return { reverted: true, dutyId: nextDuty.id, clearedTaskChecks: checks.length };
 }
 
 export async function upsertRoomAcceptance(params: {

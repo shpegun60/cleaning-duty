@@ -18,6 +18,16 @@ const TaskCheckSchema = z.object({
   isChecked: z.boolean(),
 });
 
+const WORKER_TASK_CHECK_STATUSES = ["active", "rejected", "ready_for_recheck"];
+const ADMIN_TASK_CHECK_STATUSES = [
+  "scheduled",
+  "active",
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -37,7 +47,10 @@ export async function POST(request: Request) {
       throw conflict("Duty is outside the assignee date range");
     }
 
-    if (!isAdmin && !["active", "rejected", "ready_for_recheck"].includes(duty.status)) {
+    if (
+      (!isAdmin && !WORKER_TASK_CHECK_STATUSES.includes(duty.status)) ||
+      (isAdmin && !ADMIN_TASK_CHECK_STATUSES.includes(duty.status))
+    ) {
       throw conflict("Duty status does not allow task checks");
     }
 

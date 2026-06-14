@@ -3,11 +3,15 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   clearRoomAcceptancesForDuty,
+  clearTaskChecksForDuty,
   loadDutyPeriod,
+  revertFutureActiveNextDutyIfPristine,
+  statusAfterCleaningCancellation,
   updateDutyPeriod,
   writeAuditLog,
 } from "@/lib/data/store";
 import { conflict, handleRouteError } from "@/lib/http";
+import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 
 const CancelCleaningSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -16,6 +20,7 @@ const CancelCleaningSchema = z.object({
 const CLEANING_CANCEL_STATUSES = [
   "cleaning_done",
   "handover_pending",
+  "accepted",
   "rejected",
   "ready_for_recheck",
 ] as const;
@@ -25,18 +30,17 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     const body = CancelCleaningSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
-
-    if (duty.status === "accepted") {
-      throw conflict("Cancel handover before cancelling cleaning");
-    }
+    const localDate = getLocalSchedulerState().dateKey;
 
     if (!CLEANING_CANCEL_STATUSES.includes(duty.status as (typeof CLEANING_CANCEL_STATUSES)[number])) {
       throw conflict("Duty status does not allow cleaning cancellation");
     }
 
+    const nextDutyRollback = await revertFutureActiveNextDutyIfPristine(duty, localDate);
     await clearRoomAcceptancesForDuty(duty.id);
+    await clearTaskChecksForDuty(duty.id);
     await updateDutyPeriod(duty.id, {
-      status: "active",
+      status: statusAfterCleaningCancellation(duty, localDate),
       cleaned_at: null,
       handover_started_at: null,
       accepted_at: null,
@@ -51,7 +55,10 @@ export async function POST(request: Request) {
       action: "cleaning_cancelled",
       entityType: "duty_period",
       entityId: duty.id,
-      payload: { previousStatus: duty.status },
+      payload: {
+        previousStatus: duty.status,
+        nextDutyRollback,
+      },
     });
 
     return Response.json({ ok: true });

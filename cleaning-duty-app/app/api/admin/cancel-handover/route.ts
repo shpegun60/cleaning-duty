@@ -5,10 +5,13 @@ import {
   clearRoomAcceptancesForDuty,
   listRoomAcceptances,
   loadDutyPeriod,
+  revertFutureActiveNextDutyIfPristine,
+  statusAfterCleaningCancellation,
   updateDutyPeriod,
   writeAuditLog,
 } from "@/lib/data/store";
 import { conflict, handleRouteError } from "@/lib/http";
+import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 
 const CancelHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
@@ -27,6 +30,7 @@ export async function POST(request: Request) {
     const body = CancelHandoverSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
     const acceptances = await listRoomAcceptances(duty.id);
+    const localDate = getLocalSchedulerState().dateKey;
 
     if (
       acceptances.length === 0 &&
@@ -35,9 +39,12 @@ export async function POST(request: Request) {
       throw conflict("Duty has no handover state to cancel");
     }
 
+    const nextDutyRollback = await revertFutureActiveNextDutyIfPristine(duty, localDate);
     await clearRoomAcceptancesForDuty(duty.id);
     await updateDutyPeriod(duty.id, {
-      status: duty.cleaned_at ? "cleaning_done" : "active",
+      status: duty.cleaned_at
+        ? "cleaning_done"
+        : statusAfterCleaningCancellation(duty, localDate),
       handover_started_at: null,
       accepted_at: null,
       accepted_by: null,
@@ -54,6 +61,7 @@ export async function POST(request: Request) {
       payload: {
         previousStatus: duty.status,
         clearedRoomAcceptances: acceptances.length,
+        nextDutyRollback,
       },
     });
 
