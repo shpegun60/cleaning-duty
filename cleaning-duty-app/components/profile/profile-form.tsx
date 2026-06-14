@@ -35,6 +35,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       await postJson("/api/profile", {
         email: String(form.get("email") ?? ""),
         fullName: String(form.get("fullName") ?? ""),
+        currentPassword: String(form.get("currentPassword") ?? ""),
         password: String(form.get("password") ?? ""),
       });
       setMessage("Збережено");
@@ -50,7 +51,7 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       <div className="grid gap-1">
         <h2 className="text-lg font-semibold">Дані акаунту</h2>
         <p className="text-sm text-stone-600">
-          Email використовується як логін. Новий пароль має мати щонайменше 8 символів.
+          Email використовується як логін. Для зміни пароля введи поточний пароль і новий пароль.
         </p>
       </div>
 
@@ -78,12 +79,23 @@ export function ProfileForm({ profile }: { profile: Profile }) {
       </label>
 
       <label className="grid gap-1 text-sm">
+        Поточний пароль
+        <input
+          autoComplete="current-password"
+          className="h-10 rounded-md border px-3 font-mono text-sm"
+          name="currentPassword"
+          placeholder="потрібен тільки для зміни пароля"
+          type="password"
+        />
+      </label>
+
+      <label className="grid gap-1 text-sm">
         Новий пароль
         <input
           autoComplete="new-password"
           className="h-10 rounded-md border px-3 font-mono text-sm"
           name="password"
-          placeholder="залиш пустим, щоб не міняти"
+          placeholder="мінімум 8 символів"
           type="password"
         />
       </label>

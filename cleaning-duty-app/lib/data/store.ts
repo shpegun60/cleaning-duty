@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
@@ -431,6 +431,40 @@ export async function authenticateLocalProfile(email: string, password: string) 
   const profile = { ...row };
   delete profile.password_hash;
   return asProfile(profile);
+}
+
+export async function verifyProfilePassword(params: {
+  userId: string;
+  email: string;
+  password: string;
+}) {
+  if (isLocalBackend()) {
+    const profile = await authenticateLocalProfile(params.email, params.password);
+    return profile?.id === params.userId;
+  }
+
+  const config = readRuntimeConfig();
+
+  if (!config.supabaseUrl || !config.supabasePublishableKey) {
+    throw new Error("Missing Supabase public configuration");
+  }
+
+  const supabase = createClient(config.supabaseUrl, config.supabasePublishableKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: params.email,
+    password: params.password,
+  });
+
+  if (error || !data.user) {
+    return false;
+  }
+
+  return data.user.id === params.userId;
 }
 
 export async function createProfile(params: {
