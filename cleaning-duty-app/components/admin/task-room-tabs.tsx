@@ -14,11 +14,15 @@ export function TaskRoomTabs({
   tasks: Task[];
   scheduleLocked?: boolean;
 }) {
-  const [selectedRoomId, setSelectedRoomId] = useState(rooms[0]?.id ?? "");
-  const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? rooms[0] ?? null;
-  const selectedTasks = selectedRoom
-    ? tasks.filter((task) => task.room_id === selectedRoom.id)
-    : [];
+  const [selectedRoomId, setSelectedRoomId] = useState("all");
+  const selectedRoom =
+    selectedRoomId === "all"
+      ? null
+      : rooms.find((room) => room.id === selectedRoomId) ?? null;
+  const selectedTasks =
+    selectedRoomId === "all"
+      ? tasks
+      : tasks.filter((task) => task.room_id === selectedRoomId);
   const taskCounts = new Map<string, number>();
 
   for (const task of tasks) {
@@ -36,8 +40,26 @@ export function TaskRoomTabs({
   return (
     <section className="grid gap-4">
       <div className="flex flex-wrap gap-2">
+        <button
+          className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+            selectedRoomId === "all"
+              ? "border-emerald-700 bg-emerald-700 text-white"
+              : "border-stone-300 bg-white text-stone-900 hover:bg-stone-100"
+          }`}
+          onClick={() => setSelectedRoomId("all")}
+          type="button"
+        >
+          Всі роботи
+          <span
+            className={`ml-2 rounded px-1.5 py-0.5 text-xs ${
+              selectedRoomId === "all" ? "bg-white/20 text-white" : "bg-stone-100 text-stone-700"
+            }`}
+          >
+            {tasks.length}
+          </span>
+        </button>
         {rooms.map((room) => {
-          const active = selectedRoom?.id === room.id;
+          const active = selectedRoomId === room.id;
           return (
             <button
               key={room.id}
@@ -63,7 +85,14 @@ export function TaskRoomTabs({
         })}
       </div>
 
-      {selectedRoom ? (
+      {selectedRoomId === "all" ? (
+        <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
+          <h2 className="font-semibold">Всі роботи</h2>
+          <p className="mt-1 text-sm text-stone-600">
+            Повний список робіт по всіх кімнатах.
+          </p>
+        </div>
+      ) : selectedRoom ? (
         <div className="rounded-md border border-stone-200 bg-stone-50 p-4">
           <h2 className="font-semibold">{selectedRoom.name}</h2>
           {selectedRoom.description ? (
