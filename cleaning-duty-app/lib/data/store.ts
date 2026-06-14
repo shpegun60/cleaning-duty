@@ -1595,6 +1595,22 @@ export async function listRoomAcceptances(dutyPeriodId: string) {
     .all(dutyPeriodId) as RoomAcceptance[];
 }
 
+export async function clearRoomAcceptancesForDuty(dutyPeriodId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase
+      .from("room_acceptances")
+      .delete()
+      .eq("duty_period_id", dutyPeriodId);
+    if (error) throw error;
+    return;
+  }
+
+  getLocalDb()
+    .prepare("delete from room_acceptances where duty_period_id = ?")
+    .run(dutyPeriodId);
+}
+
 export async function upsertRoomAcceptance(params: {
   dutyPeriodId: string;
   roomId: string;

@@ -18,6 +18,14 @@ const AcceptHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
 });
 
+const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const ADMIN_HANDOVER_STATUSES = [
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
+
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
@@ -29,7 +37,10 @@ export async function POST(request: Request) {
       throw forbidden("Only the next assignee can accept handover");
     }
 
-    if (!isAdmin && !["handover_pending", "ready_for_recheck"].includes(duty.status)) {
+    if (
+      (!isAdmin && !WORKER_HANDOVER_STATUSES.includes(duty.status)) ||
+      (isAdmin && !ADMIN_HANDOVER_STATUSES.includes(duty.status))
+    ) {
       throw conflict("Duty status does not allow handover accept");
     }
 

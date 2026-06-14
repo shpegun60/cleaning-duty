@@ -19,9 +19,17 @@ import { conflict, forbidden, handleRouteError } from "@/lib/http";
 
 const RejectHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
-  rejectedRoomIds: z.array(z.string().uuid()).min(1),
+  rejectedRoomIds: z.array(z.string().trim().min(1)).min(1),
   comment: z.string().trim().min(5),
 });
+
+const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const ADMIN_HANDOVER_STATUSES = [
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
 
 export async function POST(request: Request) {
   try {
@@ -34,7 +42,10 @@ export async function POST(request: Request) {
       throw forbidden("Only the next assignee can reject handover");
     }
 
-    if (!isAdmin && !["handover_pending", "ready_for_recheck"].includes(duty.status)) {
+    if (
+      (!isAdmin && !WORKER_HANDOVER_STATUSES.includes(duty.status)) ||
+      (isAdmin && !ADMIN_HANDOVER_STATUSES.includes(duty.status))
+    ) {
       throw conflict("Duty status does not allow rejection");
     }
 

@@ -19,6 +19,13 @@ type RoomGroup = {
   tasks: TaskItem[];
 };
 
+const CLEANING_CANCEL_STATUSES: DutyStatus[] = [
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
+
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
     method: "POST",
@@ -62,6 +69,7 @@ export function DutyChecklist({
     (isAssignee &&
       isWithinDutyPeriod &&
       ["active", "rejected", "ready_for_recheck"].includes(status));
+  const canCancelCleaning = canOverride && CLEANING_CANCEL_STATUSES.includes(status);
   const allChecked = useMemo(
     () => groups.every((group) => group.tasks.every((task) => checked.get(task.id))),
     [checked, groups],
@@ -112,6 +120,22 @@ export function DutyChecklist({
     }
   }
 
+  async function cancelCleaning() {
+    if (!window.confirm("Скасувати позначку, що прибирання завершено?")) {
+      return;
+    }
+
+    setMessage(null);
+
+    try {
+      await postJson("/api/admin/cancel-cleaning", { dutyPeriodId });
+      setMessage("Завершення прибирання скасовано");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Помилка");
+    }
+  }
+
   return (
     <div className="grid gap-4">
       {groups.map((group) => (
@@ -155,6 +179,11 @@ export function DutyChecklist({
             variant="secondary"
           >
             Готово до повторної перевірки
+          </Button>
+        ) : null}
+        {canCancelCleaning ? (
+          <Button onClick={cancelCleaning} type="button" variant="danger">
+            Скасувати прибирання
           </Button>
         ) : null}
       </div>

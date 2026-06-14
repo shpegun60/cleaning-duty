@@ -13,6 +13,20 @@ type RoomItem = {
   isAccepted: boolean;
 };
 
+const WORKER_HANDOVER_STATUSES: DutyStatus[] = ["handover_pending", "ready_for_recheck"];
+const ADMIN_HANDOVER_STATUSES: DutyStatus[] = [
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
+const HANDOVER_CANCEL_STATUSES: DutyStatus[] = [
+  "handover_pending",
+  "accepted",
+  "rejected",
+  "ready_for_recheck",
+];
+
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
     method: "POST",
@@ -48,8 +62,12 @@ export function HandoverChecklist({
   const [comment, setComment] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const canEdit =
-    canOverride ||
-    (isNextAssignee && ["handover_pending", "ready_for_recheck"].includes(status));
+    (canOverride && ADMIN_HANDOVER_STATUSES.includes(status)) ||
+    (isNextAssignee && WORKER_HANDOVER_STATUSES.includes(status));
+  const canCancelHandover =
+    canOverride &&
+    (HANDOVER_CANCEL_STATUSES.includes(status) ||
+      rooms.some((room) => accepted.get(room.id)));
   const allAccepted = useMemo(
     () => rooms.every((room) => accepted.get(room.id)),
     [accepted, rooms],
@@ -107,6 +125,23 @@ export function HandoverChecklist({
     }
   }
 
+  async function cancelHandover() {
+    if (!window.confirm("Скасувати приймання кімнат і передачу?")) {
+      return;
+    }
+
+    setMessage(null);
+
+    try {
+      await postJson("/api/admin/cancel-handover", { dutyPeriodId });
+      setAccepted(new Map(rooms.map((room) => [room.id, false] as const)));
+      setMessage("Передачу скасовано");
+      router.refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Помилка");
+    }
+  }
+
   return (
     <div className="grid gap-4">
       {!cleaningDone ? (
@@ -156,6 +191,11 @@ export function HandoverChecklist({
         >
           Не прийняти
         </Button>
+        {canCancelHandover ? (
+          <Button onClick={cancelHandover} type="button" variant="secondary">
+            Скасувати передачу
+          </Button>
+        ) : null}
       </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </div>

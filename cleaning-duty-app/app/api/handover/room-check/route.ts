@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/guards";
 import {
   loadActiveRoom,
   loadDutyPeriod,
+  updateDutyPeriod,
   upsertRoomAcceptance,
   writeAuditLog,
 } from "@/lib/data/store";
@@ -11,9 +12,17 @@ import { conflict, forbidden, handleRouteError } from "@/lib/http";
 
 const RoomCheckSchema = z.object({
   dutyPeriodId: z.string().uuid(),
-  roomId: z.string().uuid(),
+  roomId: z.string().trim().min(1),
   isAccepted: z.boolean(),
 });
+
+const WORKER_HANDOVER_STATUSES = ["handover_pending", "ready_for_recheck"];
+const ADMIN_HANDOVER_STATUSES = [
+  "cleaning_done",
+  "handover_pending",
+  "rejected",
+  "ready_for_recheck",
+];
 
 export async function POST(request: Request) {
   try {
@@ -26,8 +35,18 @@ export async function POST(request: Request) {
       throw forbidden("Only the next assignee can check rooms");
     }
 
-    if (!isAdmin && !["handover_pending", "ready_for_recheck"].includes(duty.status)) {
+    if (
+      (!isAdmin && !WORKER_HANDOVER_STATUSES.includes(duty.status)) ||
+      (isAdmin && !ADMIN_HANDOVER_STATUSES.includes(duty.status))
+    ) {
       throw conflict("Duty status does not allow handover checks");
+    }
+
+    if (isAdmin && duty.status === "cleaning_done") {
+      await updateDutyPeriod(duty.id, {
+        status: "handover_pending",
+        handover_started_at: new Date().toISOString(),
+      });
     }
 
     await loadActiveRoom(body.roomId);

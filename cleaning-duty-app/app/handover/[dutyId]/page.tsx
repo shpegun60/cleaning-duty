@@ -38,6 +38,13 @@ export default async function HandoverPage({
       acceptance.status,
     ]),
   );
+  const checklistKey = (acceptances as RoomAcceptance[])
+    .map(
+      (acceptance) =>
+        `${acceptance.room_id}:${acceptance.status}:${acceptance.checked_at ?? ""}`,
+    )
+    .sort()
+    .join("|");
   const roomItems = (rooms as Room[]).map((room) => ({
     id: room.id,
     name: room.name,
@@ -73,6 +80,7 @@ export default async function HandoverPage({
         </dl>
       </div>
       <HandoverChecklist
+        key={`${duty.id}:${duty.status}:${checklistKey}`}
         dutyPeriodId={duty.id}
         canOverride={user.role === "admin"}
         cleaningDone={Boolean(duty.cleaned_at)}

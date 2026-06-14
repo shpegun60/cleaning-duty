@@ -44,6 +44,10 @@ export default async function DutyPage({
   const checked = new Map(
     (checks as TaskCheck[]).map((check) => [check.task_id, check.is_checked]),
   );
+  const checklistKey = (checks as TaskCheck[])
+    .map((check) => `${check.task_id}:${check.is_checked ? 1 : 0}:${check.checked_at ?? ""}`)
+    .sort()
+    .join("|");
   const activeRooms = rooms as Room[];
   const activeTasks = tasks as Task[];
   const groups = activeRooms.map((room) => ({
@@ -87,6 +91,7 @@ export default async function DutyPage({
         </dl>
       </div>
       <DutyChecklist
+        key={`${duty.id}:${duty.status}:${checklistKey}`}
         dutyPeriodId={duty.id}
         groups={groups}
         canOverride={user.role === "admin"}

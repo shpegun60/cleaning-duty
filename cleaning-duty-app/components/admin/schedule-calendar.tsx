@@ -136,22 +136,6 @@ export function ScheduleCalendar({
     return map;
   }, [changes]);
   const changedDutyIds = new Set(changes.map((change) => change.duty_period_id));
-  const scheduledHandovers = useMemo(
-    () =>
-      duties
-        .filter(
-          (duty) =>
-            duty.week_end >= viewStart &&
-            duty.week_end <= viewEnd &&
-            !["cancelled", "force_closed"].includes(duty.status),
-        )
-        .sort((a, b) => a.week_end.localeCompare(b.week_end))
-        .map((duty) => ({
-          duty,
-          nextAssigneeId: nextDutyById.get(duty.id)?.assignee_id ?? duty.next_assignee_id,
-        })),
-    [duties, nextDutyById, viewEnd, viewStart],
-  );
   const previousMonth = format(addMonths(monthDate, -1), "yyyy-MM");
   const nextMonth = format(addMonths(monthDate, 1), "yyyy-MM");
   const currentMonth = format(new Date(), "yyyy-MM");
@@ -396,21 +380,19 @@ export function ScheduleCalendar({
                     </div>
                   </div>
                 ) : null}
-                {isHandoverDay ? (
-                  <div className="mt-2 truncate rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950">
+                {isHandoverDay && duty ? (
+                  <Link
+                    href={`/handover/${duty.id}`}
+                    className="mt-2 block truncate rounded-md border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-950 hover:bg-amber-200"
+                  >
                     {handoverLabel(duty, nextAssignee)}
-                  </div>
+                  </Link>
                 ) : null}
               </div>
             );
           })}
         </div>
       </div>
-
-      <ScheduledHandoversTable
-        handovers={scheduledHandovers}
-        profileMap={profileMap}
-      />
 
       <AssigneeChangesTable
         changes={changes}
@@ -479,67 +461,6 @@ export function ScheduleCalendar({
         </div>
       ) : null}
     </section>
-  );
-}
-
-function ScheduledHandoversTable({
-  handovers,
-  profileMap,
-}: {
-  handovers: Array<{ duty: DutyPeriod; nextAssigneeId: string | null }>;
-  profileMap: Map<string, Profile>;
-}) {
-  return (
-    <div className="mt-4 rounded-md border border-amber-200">
-      <div className="border-b border-amber-200 bg-amber-50 px-3 py-2">
-        <h3 className="font-semibold text-amber-950">Заплановані передачі</h3>
-      </div>
-      <div className="grid gap-2 p-3">
-        {handovers.map(({ duty, nextAssigneeId }) => {
-          const assignee = profileMap.get(duty.assignee_id);
-          const nextAssignee = nextAssigneeId ? profileMap.get(nextAssigneeId) : null;
-
-          return (
-            <div
-              key={duty.id}
-              className="grid gap-2 rounded-md border border-stone-100 p-3 md:grid-cols-[0.8fr_1fr_1fr_auto]"
-            >
-              <span>
-                <span className="block text-xs font-medium uppercase text-stone-500">
-                  Дата передачі
-                </span>
-                <span className="block font-semibold">{duty.week_end}</span>
-              </span>
-              <span>
-                <span className="block text-xs font-medium uppercase text-stone-500">
-                  Передає
-                </span>
-                <span className="block">{assignee?.full_name ?? duty.assignee_id}</span>
-              </span>
-              <span>
-                <span className="block text-xs font-medium uppercase text-stone-500">
-                  Приймає
-                </span>
-                <span className="block">
-                  {nextAssignee?.full_name ?? nextAssigneeId ?? "Не задано"}
-                </span>
-              </span>
-              <Link
-                className="rounded-md border border-stone-300 bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-stone-100"
-                href={`/handover/${duty.id}`}
-              >
-                Відкрити
-              </Link>
-            </div>
-          );
-        })}
-        {handovers.length === 0 ? (
-          <p className="text-sm text-stone-600">
-            У видимому діапазоні немає запланованих передач.
-          </p>
-        ) : null}
-      </div>
-    </div>
   );
 }
 
