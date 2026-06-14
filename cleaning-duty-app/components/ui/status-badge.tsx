@@ -8,7 +8,7 @@ const labels: Record<string, string> = {
   accepted: "Прийнято",
   rejected: "Відхилено",
   ready_for_recheck: "Готово до перевірки",
-  force_closed: "Закрито admin",
+  force_closed: "Закрито",
   cancelled: "Скасовано",
   pending: "Очікує",
   sent: "Надіслано",

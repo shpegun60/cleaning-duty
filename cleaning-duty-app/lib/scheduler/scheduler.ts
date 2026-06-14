@@ -1,6 +1,10 @@
 import { randomUUID } from "crypto";
 
-import { activateScheduledDutiesForDate, isLocalBackend } from "@/lib/data/store";
+import {
+  activateScheduledDutiesForDate,
+  isLocalBackend,
+  rollOverUnresolvedDutiesBeforeDate,
+} from "@/lib/data/store";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getLocalSchedulerState, isReminderWindow } from "@/lib/scheduler/dates";
 import {
@@ -15,12 +19,14 @@ export async function runScheduler() {
   const local = getLocalSchedulerState();
 
   if (isLocalBackend()) {
+    const rollover = await rollOverUnresolvedDutiesBeforeDate(local.dateKey);
     const activatedDutyPeriods = await activateScheduledDutiesForDate(local.dateKey);
     return {
       skipped: true,
       reason: "local_backend_scheduler_email_disabled",
       localDate: local.dateKey,
       localHour: local.hour,
+      automaticCarryOvers: rollover.rolledOver,
       activatedDutyPeriods: activatedDutyPeriods.length,
     };
   }
@@ -58,10 +64,12 @@ export async function runScheduler() {
       throw settingsError;
     }
 
+    const rollover = await rollOverUnresolvedDutiesBeforeDate(local.dateKey);
     const activatedDutyPeriods = await activateScheduledDutiesForDate(local.dateKey);
     const result = {
       localDate: local.dateKey,
       localHour: local.hour,
+      automaticCarryOvers: rollover.rolledOver,
       activatedDutyPeriods: activatedDutyPeriods.length,
       saturdayCleaningReminder: false,
       sundayHandoverReminder: false,

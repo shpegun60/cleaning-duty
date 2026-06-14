@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { hashPassword, verifyPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
-import { addDaysToDateKey, weekEndFromStart } from "@/lib/domain/dates";
+import { addDaysToDateKey, periodEndFromStart, weekEndFromStart } from "@/lib/domain/dates";
 import { badRequest, conflict, forbidden } from "@/lib/http";
 import { getLocalDb, mapBooleanFields, nowIso } from "@/lib/local/sqlite";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -24,6 +24,14 @@ import type {
 } from "@/lib/types";
 
 type Json = Record<string, unknown> | null | undefined;
+
+const ROLLOVER_UNRESOLVED_DUTY_STATUSES: DutyPeriod["status"][] = [
+  "scheduled",
+  "active",
+  "cleaning_done",
+  "handover_pending",
+  "ready_for_recheck",
+];
 
 export function backendMode() {
   return readRuntimeConfig().backendMode;
@@ -1080,6 +1088,170 @@ export async function activateScheduledDutiesForDate(
   }
 
   return duties.map((duty) => ({ ...duty, status: "active" }));
+}
+
+async function findFirstUnresolvedDutyBeforeDate(localDate: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase
+      .from("duty_periods")
+      .select("*")
+      .in("status", ROLLOVER_UNRESOLVED_DUTY_STATUSES)
+      .lt("week_end", localDate)
+      .order("week_start", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data as DutyPeriod | null;
+  }
+
+  const placeholders = ROLLOVER_UNRESOLVED_DUTY_STATUSES.map(() => "?").join(", ");
+  const row = getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status in (${placeholders})
+         and week_end < ?
+       order by week_start asc
+       limit 1`,
+    )
+    .get(...ROLLOVER_UNRESOLVED_DUTY_STATUSES, localDate);
+
+  return row ? asDuty(row as Record<string, unknown>) : null;
+}
+
+async function hasAnyTaskChecks(dutyPeriodId: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { count, error } = await supabase
+      .from("task_checks")
+      .select("id", { count: "exact", head: true })
+      .eq("duty_period_id", dutyPeriodId);
+    if (error) throw error;
+    return Boolean(count);
+  }
+
+  const row = getLocalDb()
+    .prepare("select count(*) as count from task_checks where duty_period_id = ?")
+    .get(dutyPeriodId) as { count: number };
+  return row.count > 0;
+}
+
+function hasHandoverOrCompletionActivity(duty: DutyPeriod) {
+  return Boolean(
+    duty.cleaned_at ||
+      duty.handover_started_at ||
+      duty.accepted_at ||
+      duty.rejected_at,
+  );
+}
+
+async function canRewriteNextDutyForRollover(duty: DutyPeriod) {
+  if (!["scheduled", "active"].includes(duty.status)) {
+    return false;
+  }
+
+  if (hasHandoverOrCompletionActivity(duty)) {
+    return false;
+  }
+
+  return !(await hasAnyTaskChecks(duty.id));
+}
+
+export async function rollOverUnresolvedDutiesBeforeDate(localDate: string) {
+  const settings = await getAppSettings();
+  const rolledOver: Array<{
+    dutyId: string;
+    weekStart: string;
+    weekEnd: string;
+    assigneeId: string;
+    previousStatus: DutyPeriod["status"];
+    nextPeriodStart: string;
+    nextDutyAction: string;
+  }> = [];
+
+  for (let guard = 0; guard < 100; guard += 1) {
+    const duty = await findFirstUnresolvedDutyBeforeDate(localDate);
+
+    if (!duty) {
+      return { rolledOver: rolledOver.length, items: rolledOver };
+    }
+
+    const nextPeriodStart = addDaysToDateKey(duty.week_end, 1);
+    const nextPeriodEnd = periodEndFromStart(
+      nextPeriodStart,
+      settings.rotation_period_unit,
+      settings.rotation_period_count,
+    );
+    const nextRotationAssignee = await resolveNextAssignee(duty.assignee_id);
+    const existingNext = await findDutyByWeekStart(nextPeriodStart);
+    let nextDutyAction = "none";
+    let futureRealignment: unknown = null;
+
+    await updateDutyPeriod(duty.id, {
+      status: "force_closed",
+      next_assignee_id: duty.assignee_id,
+    });
+
+    if (!existingNext) {
+      await insertDutyPeriod({
+        assigneeId: duty.assignee_id,
+        nextAssigneeId: nextRotationAssignee.id,
+        weekStart: nextPeriodStart,
+        weekEnd: nextPeriodEnd,
+        status: "scheduled",
+        createdBy: null,
+      });
+      nextDutyAction = "created";
+      futureRealignment = await realignScheduledDutiesAfter(
+        duty.week_start,
+        duty.assignee_id,
+      );
+    } else if (await canRewriteNextDutyForRollover(existingNext)) {
+      await updateDutyPeriod(existingNext.id, {
+        assignee_id: duty.assignee_id,
+        next_assignee_id: nextRotationAssignee.id,
+      });
+      nextDutyAction = `rewritten_${existingNext.status}`;
+      futureRealignment =
+        existingNext.status === "scheduled"
+          ? await realignScheduledDutiesAfter(duty.week_start, duty.assignee_id)
+          : await realignScheduledDutiesAfter(
+              nextPeriodStart,
+              nextRotationAssignee.id,
+            );
+    } else {
+      nextDutyAction = `left_${existingNext.status}`;
+    }
+
+    rolledOver.push({
+      dutyId: duty.id,
+      weekStart: duty.week_start,
+      weekEnd: duty.week_end,
+      assigneeId: duty.assignee_id,
+      previousStatus: duty.status,
+      nextPeriodStart,
+      nextDutyAction,
+    });
+
+    await writeAuditLog({
+      actorId: null,
+      action: "duty_auto_carried_over",
+      entityType: "duty_period",
+      entityId: duty.id,
+      payload: {
+        localDate,
+        previousStatus: duty.status,
+        assigneeId: duty.assignee_id,
+        nextPeriodStart,
+        nextPeriodEnd,
+        nextRotationAssigneeId: nextRotationAssignee.id,
+        nextDutyAction,
+        futureRealignment,
+      },
+    });
+  }
+
+  throw new Error("Too many unresolved duty periods to roll over safely");
 }
 
 export async function listDutiesForUser(userId: string) {
