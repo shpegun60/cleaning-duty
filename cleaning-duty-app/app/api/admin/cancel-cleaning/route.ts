@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/guards";
 import {
   clearRoomAcceptancesForDuty,
   clearTaskChecksForDuty,
+  getAppSettings,
   loadDutyPeriod,
   revertFutureActiveNextDutyIfPristine,
   restoreScheduledRotationAfterCancelledHandover,
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     const body = CancelCleaningSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
     const localDate = getLocalSchedulerState().dateKey;
+    const settings = await getAppSettings();
 
     if (!CLEANING_CANCEL_STATUSES.includes(duty.status as (typeof CLEANING_CANCEL_STATUSES)[number])) {
       throw conflict("Duty status does not allow cleaning cancellation");
@@ -44,7 +46,11 @@ export async function POST(request: Request) {
     await clearRoomAcceptancesForDuty(duty.id);
     await clearTaskChecksForDuty(duty.id);
     await updateDutyPeriod(duty.id, {
-      status: statusAfterCleaningCancellation(duty, localDate),
+      status: statusAfterCleaningCancellation(
+        duty,
+        localDate,
+        settings.grace_period_days,
+      ),
       cleaned_at: null,
       handover_started_at: null,
       accepted_at: null,

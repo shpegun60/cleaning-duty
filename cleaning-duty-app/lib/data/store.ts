@@ -28,9 +28,20 @@ type Json = Record<string, unknown> | null | undefined;
 const ROLLOVER_UNRESOLVED_DUTY_STATUSES: DutyPeriod["status"][] = [
   "scheduled",
   "active",
+  "grace",
   "cleaning_done",
   "handover_pending",
   "ready_for_recheck",
+];
+const GRACE_ELIGIBLE_DUTY_STATUSES: DutyPeriod["status"][] = [
+  "scheduled",
+  "active",
+];
+const CLOSED_DUTY_STATUSES: DutyPeriod["status"][] = [
+  "accepted",
+  "force_closed",
+  "overdue",
+  "cancelled",
 ];
 
 export function backendMode() {
@@ -74,7 +85,7 @@ function asNotification(row: Record<string, unknown>) {
 }
 
 function asSettings(row: Record<string, unknown>) {
-  return { ...row, id: true } as AppSettings;
+  return { grace_period_days: 0, ...row, id: true } as AppSettings;
 }
 
 function asSharedFile(row: Record<string, unknown>) {
@@ -1169,32 +1180,142 @@ export function isDateWithinDutyPeriod(
   return duty.week_start <= localDate && duty.week_end >= localDate;
 }
 
+export function dutyGraceDeadline(
+  duty: Pick<DutyPeriod, "week_end">,
+  gracePeriodDays: number,
+) {
+  return addDaysToDateKey(duty.week_end, Math.max(0, gracePeriodDays));
+}
+
+export function isDutyInGraceWindow(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  return (
+    gracePeriodDays > 0 &&
+    duty.week_end < localDate &&
+    dutyGraceDeadline(duty, gracePeriodDays) >= localDate
+  );
+}
+
+export function isDateWithinDutyWorkWindow(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  return (
+    isDateWithinDutyPeriod(duty, localDate) ||
+    isDutyInGraceWindow(duty, localDate, gracePeriodDays)
+  );
+}
+
+export async function isDateWithinConfiguredDutyWorkWindow(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+) {
+  const settings = await getAppSettings();
+  return isDateWithinDutyWorkWindow(duty, localDate, settings.grace_period_days);
+}
+
+function shouldDutyEnterGrace(
+  duty: Pick<DutyPeriod, "status" | "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  return (
+    GRACE_ELIGIBLE_DUTY_STATUSES.includes(duty.status) &&
+    isDutyInGraceWindow(duty, localDate, gracePeriodDays)
+  );
+}
+
+function shouldDutyRollOverOnDate(
+  duty: Pick<DutyPeriod, "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  const cutoffDate =
+    gracePeriodDays > 0 ? dutyGraceDeadline(duty, gracePeriodDays) : duty.week_end;
+  return cutoffDate < localDate;
+}
+
+function isDutyClosed(status: DutyPeriod["status"]) {
+  return CLOSED_DUTY_STATUSES.includes(status);
+}
+
+function isUnresolvedForGraceBlock(status: DutyPeriod["status"]) {
+  return ROLLOVER_UNRESOLVED_DUTY_STATUSES.includes(status);
+}
+
+async function canActivateScheduledDuty(
+  duty: DutyPeriod,
+  localDate: string,
+  settings: Pick<AppSettings, "grace_period_days">,
+) {
+  if (!isCurrentScheduledDuty(duty, localDate)) {
+    return false;
+  }
+
+  if (settings.grace_period_days <= 0) {
+    return true;
+  }
+
+  const previousDuty = await previousDutyBefore(duty.week_start);
+
+  if (
+    !previousDuty ||
+    isDutyClosed(previousDuty.status) ||
+    !isUnresolvedForGraceBlock(previousDuty.status)
+  ) {
+    return true;
+  }
+
+  return previousDuty.week_end >= localDate;
+}
+
 export async function activateDutyIfCurrentScheduled(
   duty: DutyPeriod,
   localDate: string,
 ): Promise<DutyPeriod> {
-  if (!isCurrentScheduledDuty(duty, localDate)) {
-    return duty;
+  const settings = await getAppSettings();
+
+  if (await canActivateScheduledDuty(duty, localDate, settings)) {
+    await updateDutyPeriod(duty.id, { status: "active" });
+    return { ...duty, status: "active" };
   }
 
-  await updateDutyPeriod(duty.id, { status: "active" });
-  return { ...duty, status: "active" };
+  if (shouldDutyEnterGrace(duty, localDate, settings.grace_period_days)) {
+    await updateDutyPeriod(duty.id, { status: "grace" });
+    return { ...duty, status: "grace" };
+  }
+
+  return duty;
 }
 
 export async function activateScheduledDutiesForDate(
   localDate: string,
 ): Promise<DutyPeriod[]> {
+  const settings = await getAppSettings();
+
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { data, error } = await supabase
       .from("duty_periods")
-      .update({ status: "active" })
+      .select("*")
       .eq("status", "scheduled")
       .lte("week_start", localDate)
       .gte("week_end", localDate)
-      .select("*");
+      .order("week_start", { ascending: true });
     if (error) throw error;
-    return (data ?? []) as DutyPeriod[];
+
+    const activated: DutyPeriod[] = [];
+    for (const duty of (data ?? []) as DutyPeriod[]) {
+      if (await canActivateScheduledDuty(duty, localDate, settings)) {
+        await updateDutyPeriod(duty.id, { status: "active" });
+        activated.push({ ...duty, status: "active" });
+      }
+    }
+    return activated;
   }
 
   const duties = getLocalDb()
@@ -1208,14 +1329,74 @@ export async function activateScheduledDutiesForDate(
     .all(localDate, localDate)
     .map((row) => asDuty(row as Record<string, unknown>));
 
+  const activated: DutyPeriod[] = [];
   for (const duty of duties) {
-    await updateDutyPeriod(duty.id, { status: "active" });
+    if (await canActivateScheduledDuty(duty, localDate, settings)) {
+      await updateDutyPeriod(duty.id, { status: "active" });
+      activated.push({ ...duty, status: "active" });
+    }
   }
 
-  return duties.map((duty) => ({ ...duty, status: "active" }));
+  return activated;
 }
 
-async function findFirstUnresolvedDutyBeforeDate(localDate: string) {
+export async function markDutiesInGraceForDate(localDate: string) {
+  const settings = await getAppSettings();
+
+  if (settings.grace_period_days <= 0) {
+    return { marked: 0, items: [] as DutyPeriod[] };
+  }
+
+  const candidates = !isLocalBackend()
+    ? await sbList<DutyPeriod>((supabase) =>
+        supabase
+          .from("duty_periods")
+          .select("*")
+          .in("status", GRACE_ELIGIBLE_DUTY_STATUSES)
+          .lt("week_end", localDate)
+          .order("week_start", { ascending: true }),
+      )
+    : getLocalDb()
+        .prepare(
+          `select * from duty_periods
+           where status in ('scheduled','active')
+             and week_end < ?
+           order by week_start asc`,
+        )
+        .all(localDate)
+        .map((row) => asDuty(row as Record<string, unknown>));
+
+  const marked: DutyPeriod[] = [];
+  for (const duty of candidates) {
+    if (!shouldDutyEnterGrace(duty, localDate, settings.grace_period_days)) {
+      continue;
+    }
+
+    await updateDutyPeriod(duty.id, { status: "grace" });
+    const updated = { ...duty, status: "grace" as const };
+    marked.push(updated);
+
+    await writeAuditLog({
+      actorId: null,
+      action: "duty_entered_grace",
+      entityType: "duty_period",
+      entityId: duty.id,
+      payload: {
+        localDate,
+        previousStatus: duty.status,
+        gracePeriodDays: settings.grace_period_days,
+        graceDeadline: dutyGraceDeadline(duty, settings.grace_period_days),
+      },
+    });
+  }
+
+  return { marked: marked.length, items: marked };
+}
+
+async function findFirstUnresolvedDutyBeforeDate(
+  localDate: string,
+  gracePeriodDays: number,
+) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     const { data, error } = await supabase
@@ -1227,7 +1408,10 @@ async function findFirstUnresolvedDutyBeforeDate(localDate: string) {
       .limit(1)
       .maybeSingle();
     if (error) throw error;
-    return data as DutyPeriod | null;
+    const duty = data as DutyPeriod | null;
+    return duty && shouldDutyRollOverOnDate(duty, localDate, gracePeriodDays)
+      ? duty
+      : null;
   }
 
   const placeholders = ROLLOVER_UNRESOLVED_DUTY_STATUSES.map(() => "?").join(", ");
@@ -1241,7 +1425,12 @@ async function findFirstUnresolvedDutyBeforeDate(localDate: string) {
     )
     .get(...ROLLOVER_UNRESOLVED_DUTY_STATUSES, localDate);
 
-  return row ? asDuty(row as Record<string, unknown>) : null;
+  if (!row) {
+    return null;
+  }
+
+  const duty = asDuty(row as Record<string, unknown>);
+  return shouldDutyRollOverOnDate(duty, localDate, gracePeriodDays) ? duty : null;
 }
 
 async function hasAnyTaskChecks(dutyPeriodId: string) {
@@ -1295,7 +1484,10 @@ export async function rollOverUnresolvedDutiesBeforeDate(localDate: string) {
   }> = [];
 
   for (let guard = 0; guard < 100; guard += 1) {
-    const duty = await findFirstUnresolvedDutyBeforeDate(localDate);
+    const duty = await findFirstUnresolvedDutyBeforeDate(
+      localDate,
+      settings.grace_period_days,
+    );
 
     if (!duty) {
       return { rolledOver: rolledOver.length, items: rolledOver };
@@ -1311,9 +1503,11 @@ export async function rollOverUnresolvedDutiesBeforeDate(localDate: string) {
     const existingNext = await findDutyByWeekStart(nextPeriodStart);
     let nextDutyAction = "none";
     let futureRealignment: unknown = null;
+    const autoClosedStatus: DutyPeriod["status"] =
+      settings.grace_period_days > 0 ? "overdue" : "force_closed";
 
     await updateDutyPeriod(duty.id, {
-      status: "force_closed",
+      status: autoClosedStatus,
       next_assignee_id: duty.assignee_id,
     });
 
@@ -1366,6 +1560,9 @@ export async function rollOverUnresolvedDutiesBeforeDate(localDate: string) {
       payload: {
         localDate,
         previousStatus: duty.status,
+        autoClosedStatus,
+        gracePeriodDays: settings.grace_period_days,
+        graceDeadline: dutyGraceDeadline(duty, settings.grace_period_days),
         assigneeId: duty.assignee_id,
         nextPeriodStart,
         nextPeriodEnd,
@@ -1388,11 +1585,13 @@ export async function listDutiesForUser(userId: string) {
         .or(`assignee_id.eq.${userId},next_assignee_id.eq.${userId}`)
         .in("status", [
           "active",
+          "grace",
           "cleaning_done",
           "handover_pending",
           "rejected",
           "ready_for_recheck",
           "scheduled",
+          "overdue",
         ])
         .order("week_start", { ascending: true })
         .limit(10),
@@ -1403,7 +1602,7 @@ export async function listDutiesForUser(userId: string) {
     .prepare(
       `select * from duty_periods
        where (assignee_id = ? or next_assignee_id = ?)
-         and status in ('active','cleaning_done','handover_pending','rejected','ready_for_recheck','scheduled')
+         and status in ('active','grace','cleaning_done','handover_pending','rejected','ready_for_recheck','scheduled','overdue')
        order by week_start asc
        limit 10`,
     )
@@ -1463,19 +1662,42 @@ export async function listAllDuties() {
 }
 
 export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8) {
-  if (!isLocalBackend()) {
-    const upcoming = await sbList<DutyPeriod>((supabase) =>
-      supabase
-        .from("duty_periods")
-        .select("*")
-        .neq("status", "cancelled")
-        .gte("week_end", localDate)
-        .order("week_start", { ascending: true })
-        .limit(limit),
-    );
+  const visibleUnresolvedStatuses: DutyPeriod["status"][] = [
+    "active",
+    "grace",
+    "cleaning_done",
+    "handover_pending",
+    "rejected",
+    "ready_for_recheck",
+  ];
 
-    if (upcoming.length > 0) {
-      return upcoming;
+  if (!isLocalBackend()) {
+    const [olderUnresolved, upcoming] = await Promise.all([
+      sbList<DutyPeriod>((supabase) =>
+        supabase
+          .from("duty_periods")
+          .select("*")
+          .in("status", visibleUnresolvedStatuses)
+          .lt("week_end", localDate)
+          .order("week_start", { ascending: true })
+          .limit(limit),
+      ),
+      sbList<DutyPeriod>((supabase) =>
+        supabase
+          .from("duty_periods")
+          .select("*")
+          .neq("status", "cancelled")
+          .gte("week_end", localDate)
+          .order("week_start", { ascending: true })
+          .limit(limit),
+      ),
+    ]);
+    const merged = uniqueDutiesById([...olderUnresolved, ...upcoming])
+      .sort((a, b) => a.week_start.localeCompare(b.week_start))
+      .slice(0, limit);
+
+    if (merged.length > 0) {
+      return merged;
     }
 
     return sbList<DutyPeriod>((supabase) =>
@@ -1488,6 +1710,17 @@ export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8)
     );
   }
 
+  const placeholders = visibleUnresolvedStatuses.map(() => "?").join(", ");
+  const olderUnresolved = getLocalDb()
+    .prepare(
+      `select * from duty_periods
+       where status in (${placeholders})
+         and week_end < ?
+       order by week_start asc
+       limit ?`,
+    )
+    .all(...visibleUnresolvedStatuses, localDate, limit)
+    .map((row) => asDuty(row as Record<string, unknown>));
   const upcoming = getLocalDb()
     .prepare(
       `select * from duty_periods
@@ -1498,9 +1731,12 @@ export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8)
     )
     .all(localDate, limit)
     .map((row) => asDuty(row as Record<string, unknown>));
+  const merged = uniqueDutiesById([...olderUnresolved, ...upcoming])
+    .sort((a, b) => a.week_start.localeCompare(b.week_start))
+    .slice(0, limit);
 
-  if (upcoming.length > 0) {
-    return upcoming;
+  if (merged.length > 0) {
+    return merged;
   }
 
   return getLocalDb()
@@ -1512,6 +1748,10 @@ export async function listCurrentAndUpcomingDuties(localDate: string, limit = 8)
     )
     .all(limit)
     .map((row) => asDuty(row as Record<string, unknown>));
+}
+
+function uniqueDutiesById(duties: DutyPeriod[]) {
+  return [...new Map(duties.map((duty) => [duty.id, duty])).values()];
 }
 
 export async function listDutiesInRange(startDate: string, endDate: string) {
@@ -2018,7 +2258,7 @@ export async function syncHandoverLinksAroundDuty(dutyId: string) {
 }
 
 function isHandoverLinkMutable(duty: DutyPeriod) {
-  return !["accepted", "cancelled", "force_closed"].includes(duty.status);
+  return !["accepted", "cancelled", "force_closed", "overdue"].includes(duty.status);
 }
 
 export async function listTaskChecks(dutyPeriodId: string) {
@@ -2125,8 +2365,17 @@ export async function clearRoomAcceptancesForDuty(dutyPeriodId: string) {
 export function statusAfterCleaningCancellation(
   duty: Pick<DutyPeriod, "week_start" | "week_end">,
   localDate: string,
+  gracePeriodDays = 0,
 ) {
-  return isDateWithinDutyPeriod(duty, localDate) ? "active" : "scheduled";
+  if (isDateWithinDutyPeriod(duty, localDate)) {
+    return "active";
+  }
+
+  if (isDutyInGraceWindow(duty, localDate, gracePeriodDays)) {
+    return "grace";
+  }
+
+  return "scheduled";
 }
 
 export async function revertFutureActiveNextDutyIfPristine(
@@ -2503,7 +2752,7 @@ export async function getAppSettings() {
     const supabase = getSupabaseForStore();
     const { data, error } = await supabase.from("app_settings").select("*").eq("id", true).single();
     if (error) throw error;
-    return data as AppSettings;
+    return asSettings(data as Record<string, unknown>);
   }
 
   const row = getLocalDb().prepare("select * from app_settings where id = 1").get();
@@ -2525,6 +2774,7 @@ export async function updateAppSettings(params: {
   futureScheduleWeeks: number;
   rotationPeriodUnit: RotationPeriodUnit;
   rotationPeriodCount: number;
+  gracePeriodDays: number;
 }) {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
@@ -2538,6 +2788,7 @@ export async function updateAppSettings(params: {
         future_schedule_weeks: params.futureScheduleWeeks,
         rotation_period_unit: params.rotationPeriodUnit,
         rotation_period_count: params.rotationPeriodCount,
+        grace_period_days: params.gracePeriodDays,
       })
       .eq("id", true);
     if (error) throw error;
@@ -2549,7 +2800,7 @@ export async function updateAppSettings(params: {
       `update app_settings
        set timezone = ?, saturday_reminder_hour = ?, sunday_reminder_hour = ?,
            reminder_window_hours = ?, future_schedule_weeks = ?,
-           rotation_period_unit = ?, rotation_period_count = ?, updated_at = ?
+           rotation_period_unit = ?, rotation_period_count = ?, grace_period_days = ?, updated_at = ?
        where id = 1`,
     )
     .run(
@@ -2560,6 +2811,7 @@ export async function updateAppSettings(params: {
       params.futureScheduleWeeks,
       params.rotationPeriodUnit,
       params.rotationPeriodCount,
+      params.gracePeriodDays,
       nowIso(),
     );
 }
@@ -2572,13 +2824,14 @@ export function updateLocalAppSettingsDirect(params: {
   futureScheduleWeeks: number;
   rotationPeriodUnit: RotationPeriodUnit;
   rotationPeriodCount: number;
+  gracePeriodDays: number;
 }) {
   getLocalDb()
     .prepare(
       `update app_settings
        set timezone = ?, saturday_reminder_hour = ?, sunday_reminder_hour = ?,
            reminder_window_hours = ?, future_schedule_weeks = ?,
-           rotation_period_unit = ?, rotation_period_count = ?, updated_at = ?
+           rotation_period_unit = ?, rotation_period_count = ?, grace_period_days = ?, updated_at = ?
        where id = 1`,
     )
     .run(
@@ -2589,6 +2842,7 @@ export function updateLocalAppSettingsDirect(params: {
       params.futureScheduleWeeks,
       params.rotationPeriodUnit,
       params.rotationPeriodCount,
+      params.gracePeriodDays,
       nowIso(),
     );
 }

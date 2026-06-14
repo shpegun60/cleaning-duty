@@ -27,19 +27,21 @@ const CLEANING_CANCEL_STATUSES: DutyStatus[] = [
   "rejected",
   "ready_for_recheck",
 ];
-const WORKER_TASK_EDIT_STATUSES: DutyStatus[] = ["active"];
 const ADMIN_TASK_EDIT_STATUSES: DutyStatus[] = [
   "scheduled",
   "active",
+  "grace",
   "cleaning_done",
   "handover_pending",
   "rejected",
   "ready_for_recheck",
 ];
-const WORKER_CLEANING_COMPLETION_STATUSES: DutyStatus[] = ["active"];
+const WORKER_TASK_EDIT_STATUSES: DutyStatus[] = ["active", "grace"];
+const WORKER_CLEANING_COMPLETION_STATUSES: DutyStatus[] = ["active", "grace"];
 const ADMIN_CLEANING_COMPLETION_STATUSES: DutyStatus[] = [
   "scheduled",
   "active",
+  "grace",
   "rejected",
   "ready_for_recheck",
 ];

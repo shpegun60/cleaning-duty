@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     const body = ChangeAssigneeSchema.parse(await request.json());
     const duty = await loadDutyPeriod(body.dutyPeriodId);
 
-    if (["accepted", "cancelled", "force_closed"].includes(duty.status)) {
+    if (["accepted", "cancelled", "force_closed", "overdue"].includes(duty.status)) {
       throw conflict("Final duty cannot be reassigned");
     }
 

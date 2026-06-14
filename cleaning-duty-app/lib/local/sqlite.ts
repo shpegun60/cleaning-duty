@@ -183,6 +183,7 @@ function initializeLocalDb(db: DatabaseSync) {
       future_schedule_weeks integer not null default 12,
       rotation_period_unit text not null default 'week',
       rotation_period_count integer not null default 1,
+      grace_period_days integer not null default 0,
       created_at text not null default current_timestamp,
       updated_at text not null default current_timestamp
     );
@@ -190,6 +191,7 @@ function initializeLocalDb(db: DatabaseSync) {
 
   ensureColumn(db, "app_settings", "rotation_period_unit", "text not null default 'week'");
   ensureColumn(db, "app_settings", "rotation_period_count", "integer not null default 1");
+  ensureColumn(db, "app_settings", "grace_period_days", "integer not null default 0");
   ensureColumn(db, "local_user_credentials", "password_plaintext", "text");
 
   db.prepare(
@@ -239,8 +241,8 @@ function initializeLocalDb(db: DatabaseSync) {
 
   db.prepare(
     `insert or ignore into app_settings
-      (id, timezone, saturday_reminder_hour, sunday_reminder_hour, reminder_window_hours, future_schedule_weeks, rotation_period_unit, rotation_period_count)
-     values (1, 'Europe/Warsaw', 8, 8, 2, 12, 'week', 1)`,
+      (id, timezone, saturday_reminder_hour, sunday_reminder_hour, reminder_window_hours, future_schedule_weeks, rotation_period_unit, rotation_period_count, grace_period_days)
+     values (1, 'Europe/Warsaw', 8, 8, 2, 12, 'week', 1, 0)`,
   ).run();
 
   const seeded = db.prepare("select count(*) as count from rooms").get() as { count: number };

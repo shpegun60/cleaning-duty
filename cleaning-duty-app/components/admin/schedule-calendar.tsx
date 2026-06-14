@@ -49,7 +49,14 @@ const dutyStyles = [
 const closedDutyStatuses = new Set<DutyPeriod["status"]>([
   "accepted",
   "force_closed",
+  "overdue",
   "cancelled",
+]);
+const waitingPreviousStatuses = new Set<DutyPeriod["status"]>([
+  "grace",
+  "cleaning_done",
+  "handover_pending",
+  "ready_for_recheck",
 ]);
 
 type CalendarMetric = {
@@ -86,6 +93,7 @@ export function ScheduleCalendar({
   pagePath = "/admin/schedule",
   extraQuery,
   viewerUserId,
+  gracePeriodDays = 0,
 }: {
   duties: DutyPeriod[];
   profiles: Profile[];
@@ -98,6 +106,7 @@ export function ScheduleCalendar({
   pagePath?: string;
   extraQuery?: Record<string, string>;
   viewerUserId?: string;
+  gracePeriodDays?: number;
 }) {
   const router = useRouter();
   const [editingDutyId, setEditingDutyId] = useState<string | null>(null);
@@ -135,6 +144,18 @@ export function ScheduleCalendar({
 
     for (let index = 0; index < orderedDuties.length - 1; index += 1) {
       map.set(orderedDuties[index].id, orderedDuties[index + 1]);
+    }
+
+    return map;
+  }, [duties]);
+  const previousDutyById = useMemo(() => {
+    const orderedDuties = [...duties].sort((a, b) =>
+      a.week_start.localeCompare(b.week_start),
+    );
+    const map = new Map<string, DutyPeriod>();
+
+    for (let index = 1; index < orderedDuties.length; index += 1) {
+      map.set(orderedDuties[index].id, orderedDuties[index - 1]);
     }
 
     return map;
@@ -179,11 +200,16 @@ export function ScheduleCalendar({
     (duty) => duty.week_end >= viewStart && duty.week_end <= viewEnd,
   );
   const acceptedDuties = visibleDuties.filter((duty) => duty.status === "accepted");
+  const graceDuties = visibleDuties.filter((duty) => duty.status === "grace");
+  const overdueDuties = visibleDuties.filter((duty) => duty.status === "overdue");
   const remainingDuties = visibleDuties.filter(
     (duty) => !closedDutyStatuses.has(duty.status),
   );
   const cancelledOrClosedDuties = visibleDuties.filter(
-    (duty) => duty.status === "cancelled" || duty.status === "force_closed",
+    (duty) =>
+      duty.status === "cancelled" ||
+      duty.status === "force_closed" ||
+      duty.status === "overdue",
   );
   const dutyStarts = visibleDuties.map((duty) => duty.week_start).sort();
   const dutyEnds = visibleDuties.map((duty) => duty.week_end).sort();
@@ -217,6 +243,14 @@ export function ScheduleCalendar({
       label: "Прийнято",
       value: String(acceptedDuties.length),
       detail: `${cancelledOrClosedDuties.length} скасовано/закрито`,
+    },
+    {
+      label: "Grace / overdue",
+      value: `${graceDuties.length} / ${overdueDuties.length}`,
+      detail:
+        gracePeriodDays > 0
+          ? `${gracePeriodDays} днів grace`
+          : "grace вимкнено",
     },
     {
       label: "Заміни",
@@ -414,12 +448,20 @@ export function ScheduleCalendar({
             const duty = dutyForDay(duties, dateKey);
             const latestChange = duty ? latestChangeByDutyId.get(duty.id) : null;
             const nextDuty = duty ? nextDutyById.get(duty.id) ?? null : null;
+            const previousDuty = duty ? previousDutyById.get(duty.id) ?? null : null;
             const nextAssigneeId = nextDuty?.assignee_id ?? duty?.next_assignee_id ?? null;
             const nextAssignee = nextAssigneeId ? profileMap.get(nextAssigneeId) : null;
             const assignee = duty ? profileMap.get(duty.assignee_id) : null;
             const isInViewRange = day >= viewStartDate && day <= viewEndDate;
             const isHandoverDay = duty?.week_end === dateKey;
             const isChanged = duty ? changedDutyIds.has(duty.id) : false;
+            const isWaitingForPrevious = Boolean(
+              duty &&
+                duty.status === "scheduled" &&
+                previousDuty &&
+                previousDuty.week_end < duty.week_start &&
+                waitingPreviousStatuses.has(previousDuty.status),
+            );
             const canOpenOwnDuty = Boolean(
               readOnly && viewerUserId && duty?.assignee_id === viewerUserId,
             );
@@ -429,6 +471,12 @@ export function ScheduleCalendar({
             const style = duty
               ? isChanged
                 ? "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-950"
+                : duty.status === "overdue"
+                  ? "border-red-300 bg-red-50 text-red-950"
+                  : duty.status === "grace"
+                    ? "border-amber-300 bg-amber-50 text-amber-950"
+                    : isWaitingForPrevious
+                      ? "border-stone-300 bg-stone-100 text-stone-900"
                 : dutyStyles[(profileIndexMap.get(duty.assignee_id) ?? 0) % dutyStyles.length]
               : "";
 
@@ -483,6 +531,11 @@ export function ScheduleCalendar({
                     {isChanged ? (
                       <span className="mt-1 inline-flex max-w-full rounded-md bg-fuchsia-200 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-fuchsia-950">
                         Змінено
+                      </span>
+                    ) : null}
+                    {isWaitingForPrevious ? (
+                      <span className="mt-1 inline-flex max-w-full rounded-md bg-stone-200 px-1.5 py-0.5 text-[11px] font-semibold leading-tight text-stone-800">
+                        Очікує завершення попереднього
                       </span>
                     ) : null}
                     {!readOnly ? (
@@ -792,6 +845,14 @@ function handoverDisplayLabel(
     return `Повторна перевірка -> ${nextAssignee.full_name}`;
   }
 
+  if (duty.status === "grace") {
+    return `Grace: чекає завершення -> ${nextAssignee.full_name}`;
+  }
+
+  if (duty.status === "overdue") {
+    return `Прострочено -> ${nextAssignee.full_name}`;
+  }
+
   if (duty.status === "handover_pending") {
     return `Очікує приймання -> ${nextAssignee.full_name}`;
   }
@@ -805,6 +866,10 @@ function handoverClassName(status: DutyPeriod["status"]) {
   }
 
   if (status === "rejected") {
+    return "border-red-300 bg-red-100 text-red-950 hover:bg-red-200";
+  }
+
+  if (status === "overdue") {
     return "border-red-300 bg-red-100 text-red-950 hover:bg-red-200";
   }
 

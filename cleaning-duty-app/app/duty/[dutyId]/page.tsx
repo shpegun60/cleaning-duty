@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
 import {
   activateDutyIfCurrentScheduled,
-  isDateWithinDutyPeriod,
+  isDateWithinConfiguredDutyWorkWindow,
   listRooms,
   listTaskChecks,
   listTasks,
@@ -63,6 +63,10 @@ export default async function DutyPage({
         isChecked: Boolean(checked.get(task.id)),
       })),
   }));
+  const isWithinDutyWorkWindow = await isDateWithinConfiguredDutyWorkWindow(
+    duty,
+    localDate,
+  );
 
   return (
     <AppShell user={user}>
@@ -97,7 +101,7 @@ export default async function DutyPage({
         groups={groups}
         canOverride={user.role === "admin"}
         isAssignee={duty.assignee_id === user.id}
-        isWithinDutyPeriod={isDateWithinDutyPeriod(duty, localDate)}
+        isWithinDutyPeriod={isWithinDutyWorkWindow}
         status={duty.status}
       />
     </AppShell>

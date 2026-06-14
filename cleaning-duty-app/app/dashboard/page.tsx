@@ -4,13 +4,14 @@ import { ButtonLink } from "@/components/ui/button";
 import { requireUserPage } from "@/lib/auth/page-guards";
 import {
   listActiveAssigneeChangesForDuties,
+  getAppSettings,
   listDutiesForUser,
   listDutiesInRange,
   listProfiles,
   listSharedFiles,
 } from "@/lib/data/store";
 import { scheduleViewRange } from "@/lib/domain/schedule-calendar";
-import type { AssigneeChange, DutyPeriod, Profile, SharedFile } from "@/lib/types";
+import type { AppSettings, AssigneeChange, DutyPeriod, Profile, SharedFile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -31,12 +32,13 @@ export default async function DashboardPage({
     start: params?.start,
     end: params?.end,
   });
-  const [duties, calendarDuties, profiles, files] = (await Promise.all([
+  const [duties, calendarDuties, profiles, files, settings] = (await Promise.all([
     listDutiesForUser(user.id),
     listDutiesInRange(range.gridStart, range.gridEnd),
     listProfiles(),
     listSharedFiles(),
-  ])) as [DutyPeriod[], DutyPeriod[], Profile[], SharedFile[]];
+    getAppSettings(),
+  ])) as [DutyPeriod[], DutyPeriod[], Profile[], SharedFile[], AppSettings];
   const changes = (await listActiveAssigneeChangesForDuties(
     calendarDuties.map((duty) => duty.id),
   )) as AssigneeChange[];
@@ -76,6 +78,7 @@ export default async function DashboardPage({
         viewEnd={range.end ?? range.gridEnd}
         isCustomRange={range.mode === "range"}
         initialTab={tab}
+        gracePeriodDays={settings.grace_period_days}
       />
     </AppShell>
   );

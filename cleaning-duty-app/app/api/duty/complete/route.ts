@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth/guards";
 import {
   activateDutyIfCurrentScheduled,
   assertAllActiveTasksChecked,
-  isDateWithinDutyPeriod,
+  isDateWithinConfiguredDutyWorkWindow,
   loadDutyPeriod,
   updateDutyPeriod,
   writeAuditLog,
@@ -16,10 +16,11 @@ const CompleteDutySchema = z.object({
   dutyPeriodId: z.string().uuid(),
 });
 
-const WORKER_CLEANING_COMPLETION_STATUSES = ["active"];
+const WORKER_CLEANING_COMPLETION_STATUSES = ["active", "grace"];
 const ADMIN_CLEANING_COMPLETION_STATUSES = [
   "scheduled",
   "active",
+  "grace",
   "rejected",
   "ready_for_recheck",
 ];
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
       throw forbidden("Only the assignee or admin can complete duty");
     }
 
-    if (!isAdmin && !isDateWithinDutyPeriod(duty, localDate)) {
+    if (!isAdmin && !(await isDateWithinConfiguredDutyWorkWindow(duty, localDate))) {
       throw conflict("Duty is outside the assignee date range");
     }
 

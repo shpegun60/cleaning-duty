@@ -22,6 +22,7 @@ export function DashboardTabs({
   viewEnd,
   isCustomRange,
   initialTab,
+  gracePeriodDays,
 }: {
   duties: DutyPeriod[];
   user: Profile;
@@ -34,6 +35,7 @@ export function DashboardTabs({
   viewEnd: string;
   isCustomRange: boolean;
   initialTab: DashboardTab;
+  gracePeriodDays: number;
 }) {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
 
@@ -65,6 +67,7 @@ export function DashboardTabs({
           viewerUserId={user.id}
           pagePath="/dashboard"
           extraQuery={{ tab: "calendar" }}
+          gracePeriodDays={gracePeriodDays}
         />
       ) : null}
       {activeTab === "files" ? <SharedFilesList files={files} /> : null}

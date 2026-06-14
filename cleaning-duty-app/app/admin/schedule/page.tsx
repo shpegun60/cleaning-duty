@@ -25,10 +25,12 @@ export const dynamic = "force-dynamic";
 const closedDutyStatuses = new Set<DutyPeriod["status"]>([
   "accepted",
   "force_closed",
+  "overdue",
   "cancelled",
 ]);
 const inProgressDutyStatuses = new Set<DutyPeriod["status"]>([
   "active",
+  "grace",
   "cleaning_done",
   "handover_pending",
   "rejected",
@@ -90,6 +92,7 @@ export default async function AdminSchedulePage({
         duties={allDutyList}
         changes={allActiveChanges}
         profiles={profileList}
+        settings={settings}
       />
       <ScheduleCalendar
         duties={calendarDutyList}
@@ -99,6 +102,7 @@ export default async function AdminSchedulePage({
         viewEnd={range.end ?? range.gridEnd}
         isCustomRange={range.mode === "range"}
         changes={activeChanges}
+        gracePeriodDays={settings.grace_period_days}
       />
     </div>
   );
@@ -108,10 +112,12 @@ function AdminScheduleSummary({
   duties,
   changes,
   profiles,
+  settings,
 }: {
   duties: DutyPeriod[];
   changes: AssigneeChange[];
   profiles: Profile[];
+  settings: AppSettings;
 }) {
   const orderedDuties = [...duties].sort((a, b) => a.week_start.localeCompare(b.week_start));
   const firstDuty = orderedDuties[0] ?? null;
@@ -119,9 +125,14 @@ function AdminScheduleSummary({
   const accepted = duties.filter((duty) => duty.status === "accepted").length;
   const remaining = duties.filter((duty) => !closedDutyStatuses.has(duty.status)).length;
   const scheduled = duties.filter((duty) => duty.status === "scheduled").length;
+  const grace = duties.filter((duty) => duty.status === "grace").length;
+  const overdue = duties.filter((duty) => duty.status === "overdue").length;
   const inProgress = duties.filter((duty) => inProgressDutyStatuses.has(duty.status)).length;
   const cancelledOrClosed = duties.filter(
-    (duty) => duty.status === "cancelled" || duty.status === "force_closed",
+    (duty) =>
+      duty.status === "cancelled" ||
+      duty.status === "force_closed" ||
+      duty.status === "overdue",
   ).length;
   const handovers = duties.filter((duty) => Boolean(duty.next_assignee_id)).length;
   const activeWorkers = profiles.filter(
@@ -148,6 +159,14 @@ function AdminScheduleSummary({
       label: "Залишилось",
       value: String(remaining),
       detail: `${scheduled} заплановано / ${inProgress} у роботі`,
+    },
+    {
+      label: "Grace / overdue",
+      value: `${grace} / ${overdue}`,
+      detail:
+        settings.grace_period_days > 0
+          ? `${settings.grace_period_days} днів grace`
+          : "grace вимкнено",
     },
     {
       label: "Прийнято",

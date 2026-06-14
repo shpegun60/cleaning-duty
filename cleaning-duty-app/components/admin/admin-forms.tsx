@@ -581,8 +581,13 @@ export function ScheduleTools({
 
     await run(async () => {
       await postJson("/api/admin/schedule-settings", {
-        rotationPeriodCount: Number(form.get("rotationPeriodCount") ?? 1),
-        rotationPeriodUnit: String(form.get("rotationPeriodUnit") ?? "week"),
+        rotationPeriodCount: Number(
+          form.get("rotationPeriodCount") ?? settings.rotation_period_count,
+        ),
+        rotationPeriodUnit: String(
+          form.get("rotationPeriodUnit") ?? settings.rotation_period_unit,
+        ),
+        gracePeriodDays: Number(form.get("gracePeriodDays") ?? settings.grace_period_days),
       });
     });
   }
@@ -634,6 +639,12 @@ export function ScheduleTools({
           Як довго триває одне чергування перед передачею наступній людині.
         </p>
         <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr]">
+          {scheduleLocked ? (
+            <>
+              <input type="hidden" name="rotationPeriodCount" value={settings.rotation_period_count} />
+              <input type="hidden" name="rotationPeriodUnit" value={settings.rotation_period_unit} />
+            </>
+          ) : null}
           <label className="grid gap-1 text-sm">
             Кількість
             <input
@@ -660,8 +671,27 @@ export function ScheduleTools({
             </select>
           </label>
         </div>
+        <label className="grid gap-1 text-sm">
+          Grace period, днів
+          <input
+            className="h-10 rounded-md border px-3"
+            name="gracePeriodDays"
+            defaultValue={settings.grace_period_days}
+            type="number"
+            min={0}
+            max={14}
+          />
+          <span className="text-xs text-stone-600">
+            0 = стара поведінка. Якщо більше 0, наступний період не активується, поки попередній у grace.
+          </span>
+        </label>
         {scheduleLocked ? <ScheduleLockedNotice /> : null}
-        <Button type="submit" className="w-full" disabled={scheduleLocked}>Зберегти налаштування</Button>
+        {scheduleLocked ? (
+          <p className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+            Довжина періоду заблокована, але grace period можна змінювати без очищення графіка.
+          </p>
+        ) : null}
+        <Button type="submit" className="w-full">Зберегти налаштування</Button>
       </form>
 
       <form onSubmit={regenerate} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">

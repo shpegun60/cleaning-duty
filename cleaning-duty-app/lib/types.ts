@@ -3,12 +3,14 @@ export type UserRole = "admin" | "worker";
 export type DutyStatus =
   | "scheduled"
   | "active"
+  | "grace"
   | "cleaning_done"
   | "handover_pending"
   | "accepted"
   | "rejected"
   | "ready_for_recheck"
   | "force_closed"
+  | "overdue"
   | "cancelled";
 
 export type NotificationType =
@@ -137,4 +139,5 @@ export type AppSettings = {
   future_schedule_weeks: number;
   rotation_period_unit: RotationPeriodUnit;
   rotation_period_count: number;
+  grace_period_days: number;
 };

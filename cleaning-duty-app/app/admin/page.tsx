@@ -6,6 +6,8 @@ import {
   listCurrentAndUpcomingDuties,
   listFailedNotifications,
   listProfiles,
+  markDutiesInGraceForDate,
+  rollOverUnresolvedDutiesBeforeDate,
 } from "@/lib/data/store";
 import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 import type { DutyPeriod, Notification, Profile } from "@/lib/types";
@@ -14,6 +16,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminDashboardPage() {
   const localDate = getLocalSchedulerState().dateKey;
+  await markDutiesInGraceForDate(localDate);
+  await rollOverUnresolvedDutiesBeforeDate(localDate);
   await activateScheduledDutiesForDate(localDate);
 
   const [duties, notifications, profiles] = await Promise.all([

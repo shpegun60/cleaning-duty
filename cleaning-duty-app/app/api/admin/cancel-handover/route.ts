@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/guards";
 import {
   clearRoomAcceptancesForDuty,
+  getAppSettings,
   listRoomAcceptances,
   loadDutyPeriod,
   revertFutureActiveNextDutyIfPristine,
@@ -32,6 +33,7 @@ export async function POST(request: Request) {
     const duty = await loadDutyPeriod(body.dutyPeriodId);
     const acceptances = await listRoomAcceptances(duty.id);
     const localDate = getLocalSchedulerState().dateKey;
+    const settings = await getAppSettings();
 
     if (
       acceptances.length === 0 &&
@@ -48,7 +50,11 @@ export async function POST(request: Request) {
     await updateDutyPeriod(duty.id, {
       status: duty.cleaned_at
         ? "cleaning_done"
-        : statusAfterCleaningCancellation(duty, localDate),
+        : statusAfterCleaningCancellation(
+            duty,
+            localDate,
+            settings.grace_period_days,
+          ),
       handover_started_at: null,
       accepted_at: null,
       accepted_by: null,

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth/guards";
 import {
   activateDutyIfCurrentScheduled,
-  isDateWithinDutyPeriod,
+  isDateWithinConfiguredDutyWorkWindow,
   loadActiveTask,
   loadDutyPeriod,
   upsertTaskCheck,
@@ -18,10 +18,11 @@ const TaskCheckSchema = z.object({
   isChecked: z.boolean(),
 });
 
-const WORKER_TASK_CHECK_STATUSES = ["active"];
+const WORKER_TASK_CHECK_STATUSES = ["active", "grace"];
 const ADMIN_TASK_CHECK_STATUSES = [
   "scheduled",
   "active",
+  "grace",
   "cleaning_done",
   "handover_pending",
   "rejected",
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
       throw forbidden("Only the assignee can update task checks");
     }
 
-    if (!isAdmin && !isDateWithinDutyPeriod(duty, localDate)) {
+    if (!isAdmin && !(await isDateWithinConfiguredDutyWorkWindow(duty, localDate))) {
       throw conflict("Duty is outside the assignee date range");
     }
 
