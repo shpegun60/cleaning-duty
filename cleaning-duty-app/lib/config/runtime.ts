@@ -215,3 +215,13 @@ export function publicRuntimeConfig() {
     dataDir: DATA_DIR,
   };
 }
+
+export function setupRuntimeConfig() {
+  const config = readRuntimeConfig();
+  return {
+    ...publicRuntimeConfig(),
+    supabaseSecretKey: config.supabaseSecretKey,
+    resendApiKey: config.resendApiKey,
+    cronSecret: config.cronSecret,
+  };
+}

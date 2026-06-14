@@ -13,6 +13,9 @@ type PublicConfig = {
   emailFrom: string;
   supabaseUrl: string;
   supabasePublishableKey: string;
+  supabaseSecretKey: string;
+  resendApiKey: string;
+  cronSecret: string;
   hasSupabaseSecretKey: boolean;
   hasResendApiKey: boolean;
   hasCronSecret: boolean;
@@ -189,6 +192,7 @@ export function SetupForm({ config }: { config: PublicConfig }) {
               label="SUPABASE_SECRET_KEY"
               name="supabaseSecretKey"
               configured={config.hasSupabaseSecretKey}
+              secretValue={config.supabaseSecretKey}
               placeholder="service role / secret key"
               hint="Секретний server-side ключ. Не публікуй його в frontend і не показуй користувачам."
             />
@@ -206,6 +210,7 @@ export function SetupForm({ config }: { config: PublicConfig }) {
               label="RESEND_API_KEY"
               name="resendApiKey"
               configured={config.hasResendApiKey}
+              secretValue={config.resendApiKey}
               placeholder="re_..."
               hint="Resend Dashboard -> API Keys -> Create API key."
             />
@@ -230,6 +235,7 @@ export function SetupForm({ config }: { config: PublicConfig }) {
               label="CRON_SECRET"
               name="cronSecret"
               configured={config.hasCronSecret}
+              secretValue={config.cronSecret}
               placeholder="long random string"
               hint="Те саме значення має бути у Vercel env. Route: /api/cron/scheduler."
             />
@@ -341,29 +347,88 @@ function SecretField({
   label,
   name,
   configured,
+  secretValue,
   placeholder,
   hint,
 }: {
   label: string;
   name: string;
   configured: boolean;
+  secretValue?: string;
   placeholder: string;
   hint: string;
 }) {
+  const [isVisible, setIsVisible] = useState(false);
+  const hasValue = Boolean(secretValue);
+
   return (
     <label className="grid gap-2 text-sm font-medium">
       <span className="flex flex-wrap items-center gap-2">
         {label}
         <StatusPill ok={configured}>{configured ? "configured" : "missing"}</StatusPill>
       </span>
-      <input
-        className="h-10 rounded-md border border-stone-300 px-3 font-mono text-sm"
-        name={name}
-        placeholder={configured ? "configured; leave blank to keep" : placeholder}
-        type="password"
-      />
+      <span className="flex min-w-0 overflow-hidden rounded-md border border-stone-300 bg-white focus-within:border-emerald-700">
+        <input
+          autoComplete="off"
+          className="h-10 min-w-0 flex-1 border-0 px-3 font-mono text-sm outline-none"
+          name={name}
+          defaultValue={secretValue ?? ""}
+          placeholder={configured ? "configured; leave blank to keep" : placeholder}
+          type={isVisible ? "text" : "password"}
+        />
+        <button
+          aria-label={isVisible ? "Сховати секрет" : "Показати секрет"}
+          className="flex h-10 w-11 shrink-0 items-center justify-center border-l border-stone-300 text-stone-600 hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!hasValue}
+          onClick={() => setIsVisible((value) => !value)}
+          type="button"
+        >
+          {isVisible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </span>
       <span className="text-xs font-normal leading-tight text-stone-600">{hint}</span>
     </label>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <path
+        d="m4 4 16 16"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M10.6 6.2A10.7 10.7 0 0 1 12 6c6.1 0 9.5 6 9.5 6a17.6 17.6 0 0 1-3.1 3.7M14.1 14.1A3 3 0 0 1 9.9 9.9M6.7 7.4A17.2 17.2 0 0 0 2.5 12s3.4 6 9.5 6c1.3 0 2.5-.3 3.6-.7"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
   );
 }
 

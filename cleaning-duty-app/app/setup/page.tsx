@@ -4,7 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { SetupForm } from "@/components/setup/setup-form";
 import { SetupLoginForm } from "@/components/setup/setup-login-form";
 import { getCurrentUserProfile } from "@/lib/auth/guards";
-import { publicRuntimeConfig } from "@/lib/config/runtime";
+import { setupRuntimeConfig } from "@/lib/config/runtime";
 import { hasLocalAdminSession } from "@/lib/local/auth";
 import type { Profile } from "@/lib/types";
 
@@ -20,7 +20,7 @@ const setupAdminProfile: Profile = {
 };
 
 export default async function SetupPage() {
-  const config = publicRuntimeConfig();
+  const config = setupRuntimeConfig();
   const loggedIn = await hasLocalAdminSession();
   const currentUser = await getCurrentUserProfile().catch(() => null);
   const shellUser = currentUser ?? (loggedIn ? setupAdminProfile : null);
