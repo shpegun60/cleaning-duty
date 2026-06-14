@@ -11,6 +11,7 @@ import {
   listSharedFiles,
 } from "@/lib/data/store";
 import { scheduleViewRange } from "@/lib/domain/schedule-calendar";
+import { getLocalSchedulerState } from "@/lib/scheduler/dates";
 import type { AppSettings, AssigneeChange, DutyPeriod, Profile, SharedFile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function DashboardPage({
 }) {
   const user = await requireUserPage();
   const params = await searchParams;
+  const localDate = getLocalSchedulerState().dateKey;
   const range = scheduleViewRange({
     month: params?.month,
     start: params?.start,
@@ -79,6 +81,7 @@ export default async function DashboardPage({
         isCustomRange={range.mode === "range"}
         initialTab={tab}
         gracePeriodDays={settings.grace_period_days}
+        localDate={localDate}
       />
     </AppShell>
   );

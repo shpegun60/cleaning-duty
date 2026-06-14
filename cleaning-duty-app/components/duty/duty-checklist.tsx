@@ -100,6 +100,14 @@ export function DutyChecklist({
       (isAssignee &&
         isWithinDutyPeriod &&
         WORKER_CLEANING_COMPLETION_STATUSES.includes(status)));
+  const editRestrictionReason = canEdit
+    ? null
+    : taskEditRestrictionReason({
+        canOverride,
+        isAssignee,
+        isWithinDutyPeriod,
+        status,
+      });
 
   async function toggleTask(taskId: string, isChecked: boolean) {
     const next = new Map(checked);
@@ -152,6 +160,12 @@ export function DutyChecklist({
 
   return (
     <div className="grid gap-4">
+      {editRestrictionReason ? (
+        <section className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-semibold">Галочки зараз недоступні</p>
+          <p className="mt-1">{editRestrictionReason}</p>
+        </section>
+      ) : null}
       {groups.map((group) => (
         <section key={group.id} className="rounded-md border border-stone-200 bg-white p-4">
           <div className="mb-3">
@@ -164,9 +178,14 @@ export function DutyChecklist({
             {group.tasks.map((task) => (
               <label
                 key={task.id}
-                className="grid grid-cols-[24px_1fr] gap-3 rounded-md border border-stone-100 p-3"
+                className={`grid grid-cols-[24px_1fr] gap-3 rounded-md border border-stone-100 p-3 ${
+                  canEdit
+                    ? "cursor-pointer hover:bg-stone-50"
+                    : "cursor-not-allowed bg-stone-50 text-stone-500"
+                }`}
               >
                 <input
+                  className="mt-1 h-5 w-5 accent-emerald-700 disabled:cursor-not-allowed"
                   type="checkbox"
                   checked={Boolean(checked.get(task.id))}
                   disabled={!canEdit}
@@ -199,4 +218,50 @@ export function DutyChecklist({
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </div>
   );
+}
+
+function taskEditRestrictionReason({
+  canOverride,
+  isAssignee,
+  isWithinDutyPeriod,
+  status,
+}: {
+  canOverride: boolean;
+  isAssignee: boolean;
+  isWithinDutyPeriod: boolean;
+  status: DutyStatus;
+}) {
+  if (canOverride) {
+    return "Цей період вже закритий або скасований, тому навіть адмін не змінює галочки в цьому статусі.";
+  }
+
+  if (!isAssignee) {
+    return "Галочки може ставити тільки призначений черговий або адмін.";
+  }
+
+  if (!isWithinDutyPeriod) {
+    return "Сьогодні поза дозволеним діапазоном цього чергування. Для старих або майбутніх періодів користувач не може змінювати галочки.";
+  }
+
+  if (status === "scheduled") {
+    return "Чергування ще не активне або очікує завершення попереднього періоду.";
+  }
+
+  if (status === "cleaning_done" || status === "handover_pending") {
+    return "Прибирання вже відправлене на приймання. Зміни може зробити тільки адмін через скасування або корекцію.";
+  }
+
+  if (status === "accepted") {
+    return "Чергування вже прийняте, тому чекліст закритий.";
+  }
+
+  if (status === "overdue" || status === "force_closed" || status === "cancelled") {
+    return "Період вже закритий системою або скасований.";
+  }
+
+  if (status === "rejected" || status === "ready_for_recheck") {
+    return "Період у статусі перевірки або відмови. Для звичайного користувача галочки тут заблоковані.";
+  }
+
+  return "Для цього статусу користувач не може змінювати галочки.";
 }

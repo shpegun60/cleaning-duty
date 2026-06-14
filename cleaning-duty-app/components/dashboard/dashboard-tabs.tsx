@@ -23,6 +23,7 @@ export function DashboardTabs({
   isCustomRange,
   initialTab,
   gracePeriodDays,
+  localDate,
 }: {
   duties: DutyPeriod[];
   user: Profile;
@@ -36,6 +37,7 @@ export function DashboardTabs({
   isCustomRange: boolean;
   initialTab: DashboardTab;
   gracePeriodDays: number;
+  localDate: string;
 }) {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab);
 
@@ -53,7 +55,14 @@ export function DashboardTabs({
         </TabButton>
       </div>
 
-      {activeTab === "duties" ? <DutyList duties={duties} user={user} /> : null}
+      {activeTab === "duties" ? (
+        <DutyList
+          duties={duties}
+          user={user}
+          localDate={localDate}
+          gracePeriodDays={gracePeriodDays}
+        />
+      ) : null}
       {activeTab === "calendar" ? (
         <ScheduleCalendar
           duties={calendarDuties}
@@ -99,35 +108,62 @@ function TabButton({
   );
 }
 
-function DutyList({ duties, user }: { duties: DutyPeriod[]; user: Profile }) {
+function DutyList({
+  duties,
+  user,
+  localDate,
+  gracePeriodDays,
+}: {
+  duties: DutyPeriod[];
+  user: Profile;
+  localDate: string;
+  gracePeriodDays: number;
+}) {
   return (
     <div className="grid gap-3">
-      {duties.map((duty) => (
-        <section key={duty.id} className="rounded-md border border-stone-200 bg-white p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-semibold">
-                {duty.week_start} - {duty.week_end}
-              </p>
-              <div className="mt-2">
-                <StatusBadge status={duty.status} />
+      {duties.map((duty) => {
+        const isOwnDuty = duty.assignee_id === user.id;
+        const canEditOwnDuty =
+          isOwnDuty && canWorkerEditDuty(duty, localDate, gracePeriodDays);
+        const dutyHint = isOwnDuty
+          ? dashboardDutyRestrictionHint(duty, localDate, gracePeriodDays)
+          : null;
+
+        return (
+          <section key={duty.id} className="rounded-md border border-stone-200 bg-white p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">
+                  {duty.week_start} - {duty.week_end}
+                </p>
+                <div className="mt-2">
+                  <StatusBadge status={duty.status} />
+                </div>
+                {dutyHint ? <p className="mt-2 max-w-xl text-sm text-stone-600">{dutyHint}</p> : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {isOwnDuty ? (
+                  <Link
+                    className={`rounded-md border px-3 py-2 text-sm font-semibold ${
+                      canEditOwnDuty
+                        ? "border-emerald-700 bg-emerald-700 text-white hover:bg-emerald-800"
+                        : "border-stone-300 bg-white text-stone-700 hover:bg-stone-100"
+                    }`}
+                    href={`/duty/${duty.id}`}
+                  >
+                    {canEditOwnDuty ? "Роботи" : "Переглянути"}
+                  </Link>
+                ) : null}
+                {duty.next_assignee_id === user.id ? (
+                  <Link className="rounded-md border px-3 py-2 text-sm font-semibold hover:bg-stone-100" href={`/handover/${duty.id}`}>
+                    Приймання
+                  </Link>
+                ) : null}
               </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              {duty.assignee_id === user.id ? (
-                <Link className="rounded-md border px-3 py-2 text-sm font-semibold hover:bg-stone-100" href={`/duty/${duty.id}`}>
-                  Роботи
-                </Link>
-              ) : null}
-              {duty.next_assignee_id === user.id ? (
-                <Link className="rounded-md border px-3 py-2 text-sm font-semibold hover:bg-stone-100" href={`/handover/${duty.id}`}>
-                  Приймання
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ))}
+          </section>
+        );
+      })}
       {duties.length === 0 ? (
         <section className="rounded-md border border-stone-200 bg-white p-6 text-stone-600">
           Активних або майбутніх чергувань для тебе поки немає.
@@ -135,6 +171,75 @@ function DutyList({ duties, user }: { duties: DutyPeriod[]; user: Profile }) {
       ) : null}
     </div>
   );
+}
+
+function canWorkerEditDuty(
+  duty: Pick<DutyPeriod, "status" | "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  return (
+    (duty.status === "active" || duty.status === "grace") &&
+    isDateInDutyWorkWindow(duty, localDate, gracePeriodDays)
+  );
+}
+
+function dashboardDutyRestrictionHint(
+  duty: Pick<DutyPeriod, "status" | "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  if (canWorkerEditDuty(duty, localDate, gracePeriodDays)) {
+    return null;
+  }
+
+  if (duty.status === "scheduled") {
+    return "Чергування ще не активне або очікує завершення попереднього періоду.";
+  }
+
+  if (!isDateInDutyWorkWindow(duty, localDate, gracePeriodDays)) {
+    return "Галочки доступні тільки у діапазоні чергування або під час grace period.";
+  }
+
+  if (duty.status === "cleaning_done" || duty.status === "handover_pending") {
+    return "Прибирання вже передане на приймання, тому галочки заблоковані.";
+  }
+
+  if (duty.status === "accepted") {
+    return "Чергування вже прийняте.";
+  }
+
+  if (duty.status === "overdue" || duty.status === "force_closed" || duty.status === "cancelled") {
+    return "Період вже закритий.";
+  }
+
+  if (duty.status === "rejected" || duty.status === "ready_for_recheck") {
+    return "Період у статусі перевірки або відмови, тому галочки заблоковані.";
+  }
+
+  return "Для цього статусу галочки недоступні.";
+}
+
+function isDateInDutyWorkWindow(
+  duty: Pick<DutyPeriod, "week_start" | "week_end">,
+  localDate: string,
+  gracePeriodDays: number,
+) {
+  if (duty.week_start <= localDate && duty.week_end >= localDate) {
+    return true;
+  }
+
+  if (gracePeriodDays <= 0 || duty.week_end >= localDate) {
+    return false;
+  }
+
+  return addDaysToDateKey(duty.week_end, gracePeriodDays) >= localDate;
+}
+
+function addDaysToDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function SharedFilesList({ files }: { files: SharedFile[] }) {
