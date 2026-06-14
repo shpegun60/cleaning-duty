@@ -19,7 +19,7 @@ const AcceptHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
 });
 
-const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending"];
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",

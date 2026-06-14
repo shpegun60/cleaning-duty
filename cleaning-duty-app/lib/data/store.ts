@@ -285,6 +285,19 @@ export async function resolveChangedDutyHandoverTargetAssigneeId(
   });
 }
 
+export async function isDutyRepeatedAfterRejectedHandover(
+  duty: Pick<DutyPeriod, "assignee_id" | "week_start">,
+) {
+  const previousDuty = await previousDutyBefore(duty.week_start);
+
+  return Boolean(
+    previousDuty &&
+      ["rejected", "ready_for_recheck"].includes(previousDuty.status) &&
+      previousDuty.assignee_id === duty.assignee_id &&
+      addDaysToDateKey(previousDuty.week_end, 1) === duty.week_start,
+  );
+}
+
 export function getNextRotationUser(users: Profile[], currentAssigneeId: string) {
   const currentIndex = users.findIndex((user) => user.id === currentAssigneeId);
   return users[currentIndex < 0 ? 0 : (currentIndex + 1) % users.length];

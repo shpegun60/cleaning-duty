@@ -5,6 +5,7 @@ import { readRuntimeConfig } from "@/lib/config/runtime";
 import {
   createNotificationIfMissing,
   delayScheduledRotationAfterRejectedHandover,
+  isDutyRepeatedAfterRejectedHandover,
   loadActiveRoom,
   loadDutyPeriod,
   loadProfile,
@@ -24,7 +25,7 @@ const RejectHandoverSchema = z.object({
   comment: z.string().trim().min(5),
 });
 
-const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_for_recheck"];
+const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending"];
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",
@@ -43,7 +44,11 @@ export async function POST(request: Request) {
     }
 
     if (duty.status === "rejected") {
-      throw conflict("Duty is already rejected. Wait for recheck or cancel handover.");
+      throw conflict("Duty is already rejected. The assignee is already moved to the next duty.");
+    }
+
+    if (await isDutyRepeatedAfterRejectedHandover(duty)) {
+      throw conflict("This is already a repeated duty after a rejection and cannot be rejected again.");
     }
 
     if (

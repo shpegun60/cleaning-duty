@@ -26,7 +26,7 @@ const CLEANING_CANCEL_STATUSES: DutyStatus[] = [
   "rejected",
   "ready_for_recheck",
 ];
-const WORKER_TASK_EDIT_STATUSES: DutyStatus[] = ["active", "rejected", "ready_for_recheck"];
+const WORKER_TASK_EDIT_STATUSES: DutyStatus[] = ["active"];
 const ADMIN_TASK_EDIT_STATUSES: DutyStatus[] = [
   "scheduled",
   "active",
@@ -35,7 +35,13 @@ const ADMIN_TASK_EDIT_STATUSES: DutyStatus[] = [
   "rejected",
   "ready_for_recheck",
 ];
-const CLEANING_COMPLETION_STATUSES: DutyStatus[] = ["active", "rejected", "ready_for_recheck"];
+const WORKER_CLEANING_COMPLETION_STATUSES: DutyStatus[] = ["active"];
+const ADMIN_CLEANING_COMPLETION_STATUSES: DutyStatus[] = [
+  "scheduled",
+  "active",
+  "rejected",
+  "ready_for_recheck",
+];
 
 async function postJson(url: string, body: unknown) {
   const response = await fetch(url, {
@@ -86,10 +92,11 @@ export function DutyChecklist({
     [checked, groups],
   );
   const canComplete =
-    canEdit &&
     allChecked &&
-    (canOverride || isWithinDutyPeriod) &&
-    CLEANING_COMPLETION_STATUSES.includes(status);
+    ((canOverride && ADMIN_CLEANING_COMPLETION_STATUSES.includes(status)) ||
+      (isAssignee &&
+        isWithinDutyPeriod &&
+        WORKER_CLEANING_COMPLETION_STATUSES.includes(status)));
 
   async function toggleTask(taskId: string, isChecked: boolean) {
     const next = new Map(checked);
@@ -118,18 +125,6 @@ export function DutyChecklist({
     try {
       await postJson("/api/duty/complete", { dutyPeriodId });
       setMessage("Чергування позначено як прибране");
-      router.refresh();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Помилка");
-    }
-  }
-
-  async function readyForRecheck() {
-    setMessage(null);
-
-    try {
-      await postJson("/api/duty/ready-for-recheck", { dutyPeriodId });
-      setMessage("Запит на повторну перевірку надіслано");
       router.refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Помилка");
@@ -187,16 +182,6 @@ export function DutyChecklist({
         <Button disabled={!canComplete} onClick={complete} type="button">
           Завершити прибирання
         </Button>
-        {status === "rejected" ? (
-          <Button
-            disabled={!canEdit || !allChecked}
-            onClick={readyForRecheck}
-            type="button"
-            variant="secondary"
-          >
-            Готово до повторної перевірки
-          </Button>
-        ) : null}
         {canCancelCleaning ? (
           <Button onClick={cancelCleaning} type="button" variant="danger">
             Скасувати прибирання

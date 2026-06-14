@@ -16,7 +16,6 @@ type RoomItem = {
 const WORKER_HANDOVER_STATUSES: DutyStatus[] = [
   "cleaning_done",
   "handover_pending",
-  "ready_for_recheck",
 ];
 const ADMIN_HANDOVER_STATUSES: DutyStatus[] = [
   "cleaning_done",
@@ -50,6 +49,7 @@ export function HandoverChecklist({
   canOverride,
   cleaningDone,
   initialComment,
+  isRepeatedAfterReject,
   rooms,
 }: {
   dutyPeriodId: string;
@@ -58,6 +58,7 @@ export function HandoverChecklist({
   canOverride: boolean;
   cleaningDone: boolean;
   initialComment: string;
+  isRepeatedAfterReject: boolean;
   rooms: RoomItem[];
 }) {
   const router = useRouter();
@@ -77,6 +78,7 @@ export function HandoverChecklist({
     () => rooms.every((room) => accepted.get(room.id)),
     [accepted, rooms],
   );
+  const canReject = canEdit && !isRepeatedAfterReject && comment.trim().length >= 5;
   const rejectedRoomIds = rooms
     .filter((room) => !accepted.get(room.id))
     .map((room) => room.id);
@@ -153,6 +155,11 @@ export function HandoverChecklist({
           Попередній черговий не натиснув завершення прибирання.
         </div>
       ) : null}
+      {isRepeatedAfterReject ? (
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          Це перечергування після попередньої відмови. Повторно відхилити його не можна; можна прийняти чергування або попросити адміна вирішити ситуацію.
+        </div>
+      ) : null}
       <section className="rounded-md border border-stone-200 bg-white p-4">
         <h2 className="mb-3 text-lg font-semibold">Кімнати</h2>
         <div className="grid gap-2">
@@ -188,7 +195,7 @@ export function HandoverChecklist({
           Прийняти чергування
         </Button>
         <Button
-          disabled={!canEdit || comment.trim().length < 5}
+          disabled={!canReject}
           onClick={rejectHandover}
           type="button"
           variant="danger"

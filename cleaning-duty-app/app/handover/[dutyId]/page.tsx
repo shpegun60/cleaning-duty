@@ -5,6 +5,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
 import {
+  isDutyRepeatedAfterRejectedHandover,
   listRoomAcceptances,
   listRooms,
   loadDutyPeriod,
@@ -32,6 +33,7 @@ export default async function HandoverPage({
     listRoomAcceptances(duty.id),
   ]);
   const previous = await loadProfile(duty.assignee_id);
+  const isRepeatedAfterReject = await isDutyRepeatedAfterRejectedHandover(duty);
   const acceptanceMap = new Map(
     (acceptances as RoomAcceptance[]).map((acceptance) => [
       acceptance.room_id,
@@ -85,6 +87,7 @@ export default async function HandoverPage({
         canOverride={user.role === "admin"}
         cleaningDone={Boolean(duty.cleaned_at)}
         initialComment={duty.reject_comment ?? ""}
+        isRepeatedAfterReject={isRepeatedAfterReject}
         isNextAssignee={duty.next_assignee_id === user.id}
         rooms={roomItems}
         status={duty.status}
