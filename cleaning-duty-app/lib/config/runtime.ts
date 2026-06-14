@@ -62,6 +62,14 @@ export function readRuntimeConfig(): RuntimeConfig {
   const merged: RuntimeConfig = {
     ...defaultConfig,
     ...fileConfig,
+    setupUsername:
+      process.env.SETUP_USERNAME ||
+      (fileConfig as Partial<RuntimeConfig>).setupUsername ||
+      defaultConfig.setupUsername,
+    setupPassword:
+      process.env.SETUP_PASSWORD ||
+      (fileConfig as Partial<RuntimeConfig>).setupPassword ||
+      defaultConfig.setupPassword,
     backendMode:
       process.env.APP_BACKEND === "supabase" || process.env.APP_BACKEND === "local"
         ? process.env.APP_BACKEND
@@ -153,6 +161,8 @@ export function getDataDir() {
 export function writeEnvLocal(config: RuntimeConfig) {
   mkdirSync(dirname(ENV_PATH), { recursive: true });
   const lines = [
+    `SETUP_USERNAME=${config.setupUsername}`,
+    `SETUP_PASSWORD=${config.setupPassword}`,
     `APP_BACKEND=${config.backendMode}`,
     `NEXT_PUBLIC_SUPABASE_URL=${config.supabaseUrl}`,
     `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${config.supabasePublishableKey}`,

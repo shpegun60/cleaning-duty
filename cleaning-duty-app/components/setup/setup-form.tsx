@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -35,11 +35,7 @@ async function postJson(url: string, body: unknown) {
   return payload;
 }
 
-export function SetupForm({
-  config,
-}: {
-  config: PublicConfig;
-}) {
+export function SetupForm({ config }: { config: PublicConfig }) {
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,33 +77,41 @@ export function SetupForm({
 
   return (
     <div className="grid gap-6">
-      <div className="rounded-md border border-stone-200 bg-white p-4">
-        <h2 className="text-lg font-semibold">Runtime state</h2>
-        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+      <section className="rounded-md border border-stone-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <dt className="text-stone-500">Config</dt>
-            <dd className="break-all font-mono">{config.configPath}</dd>
+            <h2 className="text-lg font-semibold">Deployment settings</h2>
+            <p className="mt-1 max-w-3xl text-sm text-stone-600">
+              Заповнюй зверху вниз. У Docker/local ці значення зберігаються через цей екран.
+              На Vercel ті самі назви треба внести в Project Settings / Environment Variables,
+              бо env змінні платформи мають пріоритет.
+            </p>
           </div>
-          <div>
-            <dt className="text-stone-500">Data dir</dt>
-            <dd className="break-all font-mono">{config.dataDir}</dd>
-          </div>
-          <div>
-            <dt className="text-stone-500">Supabase secret</dt>
-            <dd>{config.hasSupabaseSecretKey ? "configured" : "missing"}</dd>
-          </div>
-          <div>
-            <dt className="text-stone-500">Resend key</dt>
-            <dd>{config.hasResendApiKey ? "configured" : "missing"}</dd>
-          </div>
+          <StatusPill ok={config.backendMode === "supabase"}>
+            Backend: {config.backendMode}
+          </StatusPill>
+        </div>
+        <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatusCard label="Supabase URL" ok={Boolean(config.supabaseUrl)} />
+          <StatusCard label="Supabase publishable key" ok={Boolean(config.supabasePublishableKey)} />
+          <StatusCard label="Supabase secret key" ok={config.hasSupabaseSecretKey} />
+          <StatusCard label="Resend API key" ok={config.hasResendApiKey} />
+          <StatusCard label="Cron secret" ok={config.hasCronSecret} />
+          <StatusCard label="App URL" ok={Boolean(config.appUrl)} value={config.appUrl} />
+          <StatusCard label="Timezone" ok={Boolean(config.appTimezone)} value={config.appTimezone} />
+          <StatusCard label="Email sender" ok={Boolean(config.emailFrom)} value={config.emailFrom} />
         </dl>
-      </div>
+      </section>
 
       <form onSubmit={onSubmit} className="grid gap-6">
         <section className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">Backend mode</h2>
+          <SectionHeader
+            step="1"
+            title="Backend mode"
+            description="Для Vercel/Supabase production вибирай Supabase. Local SQLite лишай для локального або Docker/VPS режиму."
+          />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="rounded-md border border-stone-200 p-3">
+            <label className="rounded-md border border-stone-200 p-3 text-sm font-medium">
               <input
                 className="mr-2"
                 name="backendMode"
@@ -116,8 +120,11 @@ export function SetupForm({
                 defaultChecked={config.backendMode === "local"}
               />
               Local SQLite
+              <span className="mt-1 block text-xs font-normal text-stone-600">
+                Дані у `data/`; потрібен persistent disk.
+              </span>
             </label>
-            <label className="rounded-md border border-stone-200 p-3">
+            <label className="rounded-md border border-stone-200 p-3 text-sm font-medium">
               <input
                 className="mr-2"
                 name="backendMode"
@@ -126,48 +133,145 @@ export function SetupForm({
                 defaultChecked={config.backendMode === "supabase"}
               />
               Supabase
+              <span className="mt-1 block text-xs font-normal text-stone-600">
+                База, auth і файли у Supabase; підходить для Vercel.
+              </span>
             </label>
           </div>
         </section>
 
         <section className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">Setup admin</h2>
+          <SectionHeader
+            step="2"
+            title="App URL and timezone"
+            description="APP_URL використовується в email-посиланнях. Для Vercel бери production URL або custom domain."
+          />
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium">
-              Username
-              <input className="h-10 rounded-md border px-3" name="setupUsername" defaultValue={config.setupUsername} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              New password
-              <input className="h-10 rounded-md border px-3" name="setupPassword" placeholder="leave blank to keep" type="password" />
-            </label>
+            <TextField
+              label="APP_URL"
+              name="appUrl"
+              defaultValue={config.appUrl}
+              placeholder="https://your-app.vercel.app"
+              hint="Vercel -> Project -> Domains або production deployment URL."
+            />
+            <TextField
+              label="APP_TIMEZONE"
+              name="appTimezone"
+              defaultValue={config.appTimezone}
+              placeholder="Europe/Warsaw"
+              hint="Для України/Польщі зараз лишай Europe/Warsaw, якщо графік має жити в цій зоні."
+            />
           </div>
         </section>
 
         <section className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">Supabase and email</h2>
+          <SectionHeader
+            step="3"
+            title="Supabase"
+            description="Ці три значення беруться в Supabase Dashboard -> Project Settings -> API."
+          />
           <div className="mt-4 grid gap-3">
-            <input className="h-10 rounded-md border px-3" name="supabaseUrl" placeholder="NEXT_PUBLIC_SUPABASE_URL" defaultValue={config.supabaseUrl} />
-            <input className="h-10 rounded-md border px-3" name="supabasePublishableKey" placeholder="NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY" defaultValue={config.supabasePublishableKey} />
-            <input className="h-10 rounded-md border px-3" name="supabaseSecretKey" placeholder={config.hasSupabaseSecretKey ? "SUPABASE_SECRET_KEY configured; leave blank to keep" : "SUPABASE_SECRET_KEY"} type="password" />
-            <input className="h-10 rounded-md border px-3" name="resendApiKey" placeholder={config.hasResendApiKey ? "RESEND_API_KEY configured; leave blank to keep" : "RESEND_API_KEY"} type="password" />
-            <input className="h-10 rounded-md border px-3" name="emailFrom" placeholder="EMAIL_FROM" defaultValue={config.emailFrom} />
-            <input className="h-10 rounded-md border px-3" name="cronSecret" placeholder={config.hasCronSecret ? "CRON_SECRET configured; leave blank to keep" : "CRON_SECRET"} type="password" />
+            <TextField
+              label="NEXT_PUBLIC_SUPABASE_URL"
+              name="supabaseUrl"
+              defaultValue={config.supabaseUrl}
+              placeholder="https://your-project.supabase.co"
+              hint="Supabase Project URL."
+            />
+            <TextField
+              label="NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+              name="supabasePublishableKey"
+              defaultValue={config.supabasePublishableKey}
+              placeholder="publishable / anon key"
+              hint="Публічний ключ для browser login."
+            />
+            <SecretField
+              label="SUPABASE_SECRET_KEY"
+              name="supabaseSecretKey"
+              configured={config.hasSupabaseSecretKey}
+              placeholder="service role / secret key"
+              hint="Секретний server-side ключ. Не публікуй його в frontend і не показуй користувачам."
+            />
           </div>
         </section>
 
         <section className="rounded-md border border-stone-200 bg-white p-4">
-          <h2 className="text-lg font-semibold">App settings</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium">
-              APP_URL
-              <input className="h-10 rounded-md border px-3" name="appUrl" defaultValue={config.appUrl} />
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              APP_TIMEZONE
-              <input className="h-10 rounded-md border px-3" name="appTimezone" defaultValue={config.appTimezone} />
-            </label>
+          <SectionHeader
+            step="4"
+            title="Email / Resend"
+            description="Ці значення потрібні, щоб запрошення, заміни, reject і нагадування реально приходили на email."
+          />
+          <div className="mt-4 grid gap-3">
+            <SecretField
+              label="RESEND_API_KEY"
+              name="resendApiKey"
+              configured={config.hasResendApiKey}
+              placeholder="re_..."
+              hint="Resend Dashboard -> API Keys -> Create API key."
+            />
+            <TextField
+              label="EMAIL_FROM"
+              name="emailFrom"
+              defaultValue={config.emailFrom}
+              placeholder="Cleaning Duty <noreply@your-domain.com>"
+              hint="Resend Dashboard -> Domains: домен має бути verified."
+            />
           </div>
+        </section>
+
+        <section className="rounded-md border border-stone-200 bg-white p-4">
+          <SectionHeader
+            step="5"
+            title="Cron"
+            description="Cron викликає scheduler і запускає автоматичні нагадування. Secret придумуєш сам."
+          />
+          <div className="mt-4 grid gap-3">
+            <SecretField
+              label="CRON_SECRET"
+              name="cronSecret"
+              configured={config.hasCronSecret}
+              placeholder="long random string"
+              hint="Те саме значення має бути у Vercel env. Route: /api/cron/scheduler."
+            />
+          </div>
+        </section>
+
+        <section className="rounded-md border border-stone-200 bg-white p-4">
+          <SectionHeader
+            step="6"
+            title="Setup access"
+            description="Це локальний доступ до /setup. У production не лишай admin/admin."
+          />
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <TextField
+              label="SETUP_USERNAME"
+              name="setupUsername"
+              defaultValue={config.setupUsername}
+              placeholder="admin"
+              hint="Логін для /setup."
+            />
+            <SecretField
+              label="SETUP_PASSWORD"
+              name="setupPassword"
+              configured
+              placeholder="leave blank to keep current password"
+              hint="Заповни тільки якщо хочеш змінити пароль."
+            />
+          </div>
+        </section>
+
+        <section className="rounded-md border border-stone-200 bg-white p-4">
+          <h2 className="text-lg font-semibold">Runtime state</h2>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-stone-500">Config file</dt>
+              <dd className="break-all font-mono text-xs">{config.configPath}</dd>
+            </div>
+            <div>
+              <dt className="text-stone-500">Data dir</dt>
+              <dd className="break-all font-mono text-xs">{config.dataDir}</dd>
+            </div>
+          </dl>
         </section>
 
         <div className="flex flex-wrap gap-3">
@@ -181,5 +285,128 @@ export function SetupForm({
         {message ? <p className="text-sm text-stone-700">{message}</p> : null}
       </form>
     </div>
+  );
+}
+
+function SectionHeader({
+  step,
+  title,
+  description,
+}: {
+  step: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex gap-3">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-emerald-700 text-sm font-bold text-white">
+        {step}
+      </span>
+      <div>
+        <h2 className="text-lg font-semibold">{title}</h2>
+        <p className="mt-1 text-sm text-stone-600">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+function TextField({
+  label,
+  name,
+  defaultValue,
+  placeholder,
+  hint,
+}: {
+  label: string;
+  name: string;
+  defaultValue: string;
+  placeholder: string;
+  hint: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      {label}
+      <input
+        className="h-10 rounded-md border border-stone-300 px-3 font-mono text-sm"
+        name={name}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+      />
+      <span className="text-xs font-normal leading-tight text-stone-600">{hint}</span>
+    </label>
+  );
+}
+
+function SecretField({
+  label,
+  name,
+  configured,
+  placeholder,
+  hint,
+}: {
+  label: string;
+  name: string;
+  configured: boolean;
+  placeholder: string;
+  hint: string;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-medium">
+      <span className="flex flex-wrap items-center gap-2">
+        {label}
+        <StatusPill ok={configured}>{configured ? "configured" : "missing"}</StatusPill>
+      </span>
+      <input
+        className="h-10 rounded-md border border-stone-300 px-3 font-mono text-sm"
+        name={name}
+        placeholder={configured ? "configured; leave blank to keep" : placeholder}
+        type="password"
+      />
+      <span className="text-xs font-normal leading-tight text-stone-600">{hint}</span>
+    </label>
+  );
+}
+
+function StatusCard({
+  label,
+  ok,
+  value,
+}: {
+  label: string;
+  ok: boolean;
+  value?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-stone-200 bg-stone-50 p-3">
+      <dt className="text-xs font-semibold uppercase text-stone-500 [overflow-wrap:anywhere]">
+        {label}
+      </dt>
+      <dd className="mt-1">
+        <StatusPill ok={ok}>{ok ? "configured" : "missing"}</StatusPill>
+      </dd>
+      {value ? (
+        <dd className="mt-2 truncate text-xs text-stone-600" title={value}>
+          {value}
+        </dd>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusPill({
+  ok,
+  children,
+}: {
+  ok: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={`inline-flex max-w-full items-center rounded-md px-2 py-1 text-xs font-semibold leading-tight ${
+        ok ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+      }`}
+    >
+      {children}
+    </span>
   );
 }
