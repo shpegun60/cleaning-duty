@@ -49,6 +49,7 @@ export function HandoverChecklist({
   isNextAssignee,
   canOverride,
   cleaningDone,
+  initialComment,
   rooms,
 }: {
   dutyPeriodId: string;
@@ -56,13 +57,14 @@ export function HandoverChecklist({
   isNextAssignee: boolean;
   canOverride: boolean;
   cleaningDone: boolean;
+  initialComment: string;
   rooms: RoomItem[];
 }) {
   const router = useRouter();
   const [accepted, setAccepted] = useState(
     () => new Map(rooms.map((room) => [room.id, room.isAccepted] as const)),
   );
-  const [comment, setComment] = useState("");
+  const [comment, setComment] = useState(initialComment);
   const [message, setMessage] = useState<string | null>(null);
   const canEdit =
     (canOverride && ADMIN_HANDOVER_STATUSES.includes(status)) ||
@@ -91,7 +93,6 @@ export function HandoverChecklist({
         roomId,
         isAccepted,
       });
-      router.refresh();
     } catch (error) {
       const rollback = new Map(accepted);
       rollback.set(roomId, !isAccepted);
@@ -187,7 +188,7 @@ export function HandoverChecklist({
           Прийняти чергування
         </Button>
         <Button
-          disabled={!canEdit || allAccepted || comment.trim().length < 5}
+          disabled={!canEdit || comment.trim().length < 5}
           onClick={rejectHandover}
           type="button"
           variant="danger"

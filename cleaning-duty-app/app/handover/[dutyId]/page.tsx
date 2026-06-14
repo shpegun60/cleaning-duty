@@ -84,6 +84,7 @@ export default async function HandoverPage({
         dutyPeriodId={duty.id}
         canOverride={user.role === "admin"}
         cleaningDone={Boolean(duty.cleaned_at)}
+        initialComment={duty.reject_comment ?? ""}
         isNextAssignee={duty.next_assignee_id === user.id}
         rooms={roomItems}
         status={duty.status}

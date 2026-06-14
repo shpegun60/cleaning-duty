@@ -20,7 +20,7 @@ import { conflict, forbidden, handleRouteError } from "@/lib/http";
 
 const RejectHandoverSchema = z.object({
   dutyPeriodId: z.string().uuid(),
-  rejectedRoomIds: z.array(z.string().trim().min(1)).min(1),
+  rejectedRoomIds: z.array(z.string().trim().min(1)).default([]),
   comment: z.string().trim().min(5),
 });
 
