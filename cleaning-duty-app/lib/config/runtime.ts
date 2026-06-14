@@ -49,15 +49,14 @@ function createToken() {
 }
 
 export function readRuntimeConfig(): RuntimeConfig {
-  ensureDataDir();
-
   let fileConfig = {};
-  if (existsSync(CONFIG_PATH)) {
-    try {
+  try {
+    ensureDataDir();
+    if (existsSync(CONFIG_PATH)) {
       fileConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-    } catch {
-      fileConfig = {};
     }
+  } catch {
+    fileConfig = {};
   }
 
   const merged: RuntimeConfig = {
@@ -101,7 +100,9 @@ export function readRuntimeConfig(): RuntimeConfig {
 
   if (!merged.localAuthToken) {
     merged.localAuthToken = createToken();
-    writeRuntimeConfig(merged);
+    if (merged.backendMode === "local") {
+      writeRuntimeConfig(merged);
+    }
   }
 
   return merged;

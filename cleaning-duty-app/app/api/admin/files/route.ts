@@ -1,16 +1,19 @@
 import { randomUUID } from "crypto";
-import { mkdir, unlink, writeFile } from "fs/promises";
-import { extname, join, resolve } from "path";
+import { extname } from "path";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { getDataDir } from "@/lib/config/runtime";
 import { createSharedFile, writeAuditLog } from "@/lib/data/store";
 import { badRequest, handleRouteError } from "@/lib/http";
+import {
+  removeSharedFileObject,
+  saveSharedFileObject,
+  sharedFileStoragePath,
+} from "@/lib/storage/shared-files";
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 export async function POST(request: Request) {
-  let savedPath: string | null = null;
+  let savedStoragePath: string | null = null;
 
   try {
     const admin = await requireAdmin();
@@ -31,16 +34,19 @@ export async function POST(request: Request) {
 
     const id = randomUUID();
     const extension = safeExtension(value.name);
-    const storagePath = `shared-files/${id}${extension}`;
-    const fullPath = safeDataPath(storagePath);
-    savedPath = fullPath;
+    const storagePath = sharedFileStoragePath(id, extension);
+    savedStoragePath = storagePath;
+    const mimeType = value.type || "application/octet-stream";
 
-    await mkdir(join(getDataDir(), "shared-files"), { recursive: true });
-    await writeFile(fullPath, Buffer.from(await value.arrayBuffer()));
+    await saveSharedFileObject({
+      storagePath,
+      bytes: Buffer.from(await value.arrayBuffer()),
+      contentType: mimeType,
+    });
     await createSharedFile({
       id,
       originalName: value.name || "file",
-      mimeType: value.type || "application/octet-stream",
+      mimeType,
       sizeBytes: value.size,
       storagePath,
       uploadedBy: admin.id,
@@ -60,8 +66,8 @@ export async function POST(request: Request) {
 
     return Response.json({ ok: true, id });
   } catch (error) {
-    if (savedPath) {
-      await unlink(savedPath).catch(() => undefined);
+    if (savedStoragePath) {
+      await removeSharedFileObject(savedStoragePath).catch(() => undefined);
     }
     return handleRouteError(error);
   }
@@ -70,15 +76,4 @@ export async function POST(request: Request) {
 function safeExtension(fileName: string) {
   const extension = extname(fileName).toLowerCase();
   return /^[a-z0-9.]{1,16}$/.test(extension) ? extension : "";
-}
-
-function safeDataPath(storagePath: string) {
-  const dataDir = resolve(getDataDir());
-  const fullPath = resolve(dataDir, storagePath);
-
-  if (!fullPath.startsWith(`${dataDir}\\`) && !fullPath.startsWith(`${dataDir}/`)) {
-    throw badRequest("Invalid file path");
-  }
-
-  return fullPath;
 }

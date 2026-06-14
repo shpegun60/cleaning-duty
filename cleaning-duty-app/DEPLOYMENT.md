@@ -98,10 +98,42 @@ docker compose up -d
 
 ## Vercel / serverless note
 
-Do not deploy the current full Local SQLite setup to serverless hosting if you need persistent data. Serverless filesystems are not a safe place for:
+Do not deploy the Local SQLite setup to serverless hosting if you need persistent data. Serverless filesystems are not a safe place for:
 
 - `data/cleaning-duty.sqlite`
 - `data/runtime-config.json`
 - uploaded shared files
 
-Vercel is suitable only after moving persistent state to external services, for example Supabase/Postgres and object storage for uploaded files.
+Vercel is suitable with `APP_BACKEND=supabase`. In that mode:
+
+- Supabase Postgres stores the app data.
+- Supabase Auth stores users.
+- Supabase Storage stores uploaded shared files in the private `shared-files` bucket.
+
+Required Vercel environment variables:
+
+```env
+APP_BACKEND=supabase
+APP_URL=https://your-app.vercel.app
+APP_TIMEZONE=Europe/Warsaw
+CRON_SECRET=your-long-random-secret
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
+SUPABASE_SECRET_KEY=your-secret-or-service-role-key
+RESEND_API_KEY=your-resend-key-if-email-is-needed
+EMAIL_FROM=Cleaning Duty <noreply@your-domain.com>
+```
+
+Before the first Vercel deploy, run every SQL file in `supabase/migrations` in filename order against your Supabase project. Migration `013_shared_files_storage_bucket.sql` creates the Storage bucket for uploaded files.
+
+Vercel Cron can call:
+
+```text
+/api/cron/scheduler
+```
+
+The route requires:
+
+```http
+Authorization: Bearer YOUR_CRON_SECRET
+```

@@ -1,11 +1,9 @@
-import { unlink } from "fs/promises";
-import { resolve } from "path";
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { getDataDir } from "@/lib/config/runtime";
-import { removeSharedFile, writeAuditLog } from "@/lib/data/store";
-import { badRequest, handleRouteError } from "@/lib/http";
+import { loadSharedFile, removeSharedFile, writeAuditLog } from "@/lib/data/store";
+import { handleRouteError } from "@/lib/http";
+import { removeSharedFileObject } from "@/lib/storage/shared-files";
 
 const DeleteSharedFileSchema = z.object({
   id: z.string().uuid(),
@@ -15,9 +13,10 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = DeleteSharedFileSchema.parse(await request.json());
-    const file = await removeSharedFile(body.id);
+    const file = await loadSharedFile(body.id);
 
-    await unlink(safeDataPath(file.storage_path)).catch(() => undefined);
+    await removeSharedFileObject(file.storage_path).catch(() => undefined);
+    await removeSharedFile(body.id);
     await writeAuditLog({
       actorId: admin.id,
       action: "shared_file_removed",
@@ -33,15 +32,4 @@ export async function POST(request: Request) {
   } catch (error) {
     return handleRouteError(error);
   }
-}
-
-function safeDataPath(storagePath: string) {
-  const dataDir = resolve(getDataDir());
-  const fullPath = resolve(dataDir, storagePath);
-
-  if (!fullPath.startsWith(`${dataDir}\\`) && !fullPath.startsWith(`${dataDir}/`)) {
-    throw badRequest("Invalid file path");
-  }
-
-  return fullPath;
 }

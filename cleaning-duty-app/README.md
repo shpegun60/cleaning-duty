@@ -78,15 +78,7 @@ CRON_SECRET=
 
 For Local SQLite mode, the database is created automatically in `data/cleaning-duty.sqlite`.
 
-For Supabase mode, run the SQL files in `supabase/migrations` in order:
-
-1. `001_extensions.sql`
-2. `002_enums.sql`
-3. `003_schema.sql`
-4. `004_indexes.sql`
-5. `005_rls.sql`
-6. `006_rpc.sql`
-7. `007_seed.sql`
+For Supabase mode, run all SQL files in `supabase/migrations` in filename order. The migrations create the database schema and the private Supabase Storage bucket used for shared files.
 
 After migrations, create the first Supabase Auth user manually, then insert a matching `public.profiles` row with `role = 'admin'`.
 
