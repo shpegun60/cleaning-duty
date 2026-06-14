@@ -78,7 +78,7 @@ CRON_SECRET=
 
 For Local SQLite mode, the database is created automatically in `data/cleaning-duty.sqlite`.
 
-For Supabase mode, run all SQL files in `supabase/migrations` in filename order. The migrations create the database schema and the private Supabase Storage bucket used for shared files.
+For Supabase mode, run all SQL files in `supabase/migrations` in filename order. The migrations create the database schema, the private Supabase Storage bucket used for shared files, and the API grants needed by Supabase Auth users.
 
 After migrations, create the first Supabase Auth user manually, then insert a matching `public.profiles` row with `role = 'admin'`.
 
