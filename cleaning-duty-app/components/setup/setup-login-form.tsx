@@ -56,7 +56,7 @@ export function SetupLoginForm() {
           className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
           name="password"
           type="password"
-          defaultValue="admin"
+          placeholder="SETUP_PASSWORD"
           required
         />
       </label>

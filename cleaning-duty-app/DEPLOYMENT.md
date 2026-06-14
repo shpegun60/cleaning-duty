@@ -118,6 +118,7 @@ APP_URL=https://your-app.vercel.app
 APP_TIMEZONE=Europe/Warsaw
 SETUP_USERNAME=admin
 SETUP_PASSWORD=change-this-before-production
+LOCAL_AUTH_TOKEN=your-long-random-local-session-secret
 CRON_SECRET=your-long-random-secret
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-publishable-key
@@ -135,6 +136,7 @@ Where to get these values:
 - `EMAIL_FROM`: a sender address on a domain verified in Resend, for example `Cleaning Duty <noreply@your-domain.com>`.
 - `APP_URL`: the public Production URL from Vercel, for example `https://your-app.vercel.app` or your custom domain.
 - `SETUP_USERNAME` / `SETUP_PASSWORD`: the protected setup login for `/setup`. Change the default before production.
+- `LOCAL_AUTH_TOKEN`: a stable random secret used to sign the local setup/admin session cookie. If omitted, the app derives it from other server secrets.
 - `CRON_SECRET`: any long random value that you create yourself and save in Vercel env vars.
 
 Before the first Vercel deploy, run every SQL file in `supabase/migrations` in filename order against your Supabase project. Migration `013_shared_files_storage_bucket.sql` creates the Storage bucket for uploaded files.

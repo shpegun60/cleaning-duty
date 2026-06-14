@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
-import { randomBytes } from "crypto";
+import { createHash, randomBytes } from "crypto";
 
 export type BackendMode = "local" | "supabase";
 
@@ -48,6 +48,12 @@ function createToken() {
   return randomBytes(32).toString("hex");
 }
 
+function createStableToken(seed: string) {
+  return createHash("sha256")
+    .update(`cleaning-duty-local-session:${seed}`)
+    .digest("hex");
+}
+
 export function readRuntimeConfig(): RuntimeConfig {
   let fileConfig = {};
   try {
@@ -62,6 +68,10 @@ export function readRuntimeConfig(): RuntimeConfig {
   const merged: RuntimeConfig = {
     ...defaultConfig,
     ...fileConfig,
+    localAuthToken:
+      process.env.LOCAL_AUTH_TOKEN ||
+      (fileConfig as Partial<RuntimeConfig>).localAuthToken ||
+      defaultConfig.localAuthToken,
     setupUsername:
       process.env.SETUP_USERNAME ||
       (fileConfig as Partial<RuntimeConfig>).setupUsername ||
@@ -107,7 +117,16 @@ export function readRuntimeConfig(): RuntimeConfig {
   };
 
   if (!merged.localAuthToken) {
-    merged.localAuthToken = createToken();
+    const stableSessionSeed =
+      process.env.CRON_SECRET ||
+      process.env.SETUP_PASSWORD ||
+      process.env.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    merged.localAuthToken = stableSessionSeed
+      ? createStableToken(stableSessionSeed)
+      : createToken();
+
     if (merged.backendMode === "local") {
       writeRuntimeConfig(merged);
     }
@@ -163,6 +182,7 @@ export function writeEnvLocal(config: RuntimeConfig) {
   const lines = [
     `SETUP_USERNAME=${config.setupUsername}`,
     `SETUP_PASSWORD=${config.setupPassword}`,
+    `LOCAL_AUTH_TOKEN=${config.localAuthToken}`,
     `APP_BACKEND=${config.backendMode}`,
     `NEXT_PUBLIC_SUPABASE_URL=${config.supabaseUrl}`,
     `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${config.supabasePublishableKey}`,
