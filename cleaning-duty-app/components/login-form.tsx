@@ -24,6 +24,8 @@ export function LoginForm({
     setMessage(null);
 
     const form = new FormData(event.currentTarget);
+    const username = String(form.get("username") ?? "").trim();
+    const password = String(form.get("password") ?? "");
 
     try {
       if (backendMode === "local") {
@@ -31,8 +33,8 @@ export function LoginForm({
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            username: String(form.get("username") ?? ""),
-            password: String(form.get("password") ?? ""),
+            username,
+            password,
           }),
         });
         const payload = await response.json().catch(() => ({}));
@@ -46,6 +48,26 @@ export function LoginForm({
         return;
       }
 
+      const setupResponse = await fetch("/api/local-auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          username,
+          password,
+        }),
+      });
+      await setupResponse.json().catch(() => ({}));
+
+      if (setupResponse.ok) {
+        router.push("/setup");
+        router.refresh();
+        return;
+      }
+
+      if (!username.includes("@")) {
+        throw new Error("Неправильний setup login або пароль");
+      }
+
       if (!supabaseUrl || !supabasePublishableKey) {
         throw new Error("Supabase mode selected, but public Supabase config is missing");
       }
@@ -54,8 +76,8 @@ export function LoginForm({
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          email: String(form.get("email") ?? ""),
-          password: String(form.get("password") ?? ""),
+          email: username,
+          password,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -102,13 +124,12 @@ export function LoginForm({
       ) : (
         <>
           <label className="grid gap-2 text-sm font-medium">
-            Email
+            Email або setup login
             <input
               className="h-11 rounded-md border border-stone-300 bg-white px-3 outline-none focus:border-emerald-700"
-              name="email"
-              type="email"
+              name="username"
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </label>
           <label className="grid gap-2 text-sm font-medium">

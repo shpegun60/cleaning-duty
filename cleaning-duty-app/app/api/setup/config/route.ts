@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { requireAdmin } from "@/lib/auth/guards";
 import { readRuntimeConfig, updateRuntimeConfig } from "@/lib/config/runtime";
 import { writeLocalAuditLogDirect } from "@/lib/data/store";
 import { forbidden, handleRouteError } from "@/lib/http";
@@ -21,9 +22,7 @@ const SetupConfigSchema = z.object({
 
 export async function POST(request: Request) {
   try {
-    if (!(await hasLocalAdminSession())) {
-      throw forbidden("Setup login required");
-    }
+    const actorId = await resolveSetupActorId();
 
     const body = SetupConfigSchema.parse(await request.json());
     const current = readRuntimeConfig();
@@ -42,7 +41,7 @@ export async function POST(request: Request) {
     });
 
     writeLocalAuditLogDirect({
-      actorId: "local-admin",
+      actorId,
       action: "runtime_config_updated",
       entityType: "runtime_config",
       payload: {
@@ -58,4 +57,18 @@ export async function POST(request: Request) {
   } catch (error) {
     return handleRouteError(error);
   }
+}
+
+async function resolveSetupActorId() {
+  if (await hasLocalAdminSession()) {
+    return "local-admin";
+  }
+
+  const admin = await requireAdmin().catch(() => null);
+
+  if (admin) {
+    return admin.id;
+  }
+
+  throw forbidden("Setup admin login required");
 }
