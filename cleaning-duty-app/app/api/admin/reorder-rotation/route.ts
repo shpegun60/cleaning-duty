@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { reorderActiveWorkerRotation, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  reorderActiveWorkerRotation,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const ReorderRotationSchema = z.object({
@@ -17,6 +21,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = ReorderRotationSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const items = await reorderActiveWorkerRotation(body.items);
 
     await writeAuditLog({

@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { updateProfile, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  loadProfile,
+  updateProfile,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const UpdateProfileSchema = z.object({
@@ -16,6 +21,17 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = UpdateProfileSchema.parse(await request.json());
+    const existing = await loadProfile(body.userId);
+    const nextRotationOrder = body.role === "worker" ? body.rotationOrder : null;
+    const rosterChanged =
+      existing.role !== body.role ||
+      existing.is_active !== body.isActive ||
+      (existing.rotation_order ?? null) !== nextRotationOrder;
+
+    if (rosterChanged) {
+      await assertScheduleIsEmptyForRosterConfig();
+    }
+
     await updateProfile(body);
 
     await writeAuditLog({

@@ -18,6 +18,7 @@ import type {
   RoomAcceptance,
   RoomAcceptanceStatus,
   RotationPeriodUnit,
+  SharedFile,
   Task,
   TaskCheck,
 } from "@/lib/types";
@@ -66,6 +67,10 @@ function asNotification(row: Record<string, unknown>) {
 
 function asSettings(row: Record<string, unknown>) {
   return { ...row, id: true } as AppSettings;
+}
+
+function asSharedFile(row: Record<string, unknown>) {
+  return { ...row } as SharedFile;
 }
 
 function jsonPayload(value: Json) {
@@ -518,6 +523,30 @@ async function upsertAdminVisiblePassword(userId: string, password: string) {
       password_plaintext: password,
     });
   if (error) throw error;
+}
+
+export async function hasDutySchedule() {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { count, error } = await supabase
+      .from("duty_periods")
+      .select("id", { count: "exact", head: true });
+    if (error) throw error;
+    return (count ?? 0) > 0;
+  }
+
+  const row = getLocalDb()
+    .prepare("select count(*) as count from duty_periods")
+    .get() as { count: number };
+  return row.count > 0;
+}
+
+export async function assertScheduleIsEmptyForRosterConfig() {
+  if (await hasDutySchedule()) {
+    throw conflict(
+      "Графік вже побудовано. Спочатку очисти весь графік, потім змінюй людей, кімнати, роботи або rotation order.",
+    );
+  }
 }
 
 export async function updateProfile(params: {
@@ -2053,6 +2082,91 @@ export async function writeAuditLog(params: {
       params.entityId ?? null,
       jsonPayload(params.payload),
     );
+}
+
+export async function listSharedFiles() {
+  if (!isLocalBackend()) {
+    return sbList<SharedFile>((supabase) =>
+      supabase
+        .from("shared_files")
+        .select("*")
+        .order("created_at", { ascending: false }),
+    );
+  }
+
+  return getLocalDb()
+    .prepare("select * from shared_files order by created_at desc")
+    .all()
+    .map((row) => asSharedFile(row as Record<string, unknown>));
+}
+
+export async function loadSharedFile(id: string) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { data, error } = await supabase
+      .from("shared_files")
+      .select("*")
+      .eq("id", id)
+      .single();
+    if (error) throw error;
+    return data as SharedFile;
+  }
+
+  const row = getLocalDb().prepare("select * from shared_files where id = ?").get(id);
+  if (!row) throw new Error("Shared file not found");
+  return asSharedFile(row as Record<string, unknown>);
+}
+
+export async function createSharedFile(params: {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  storagePath: string;
+  uploadedBy: string | null;
+}) {
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase.from("shared_files").insert({
+      id: params.id,
+      original_name: params.originalName,
+      mime_type: params.mimeType,
+      size_bytes: params.sizeBytes,
+      storage_path: params.storagePath,
+      uploaded_by: params.uploadedBy,
+    });
+    if (error) throw error;
+    return;
+  }
+
+  getLocalDb()
+    .prepare(
+      `insert into shared_files
+       (id, original_name, mime_type, size_bytes, storage_path, uploaded_by)
+       values (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      params.id,
+      params.originalName,
+      params.mimeType,
+      params.sizeBytes,
+      params.storagePath,
+      params.uploadedBy,
+    );
+}
+
+export async function removeSharedFile(id: string) {
+  const file = await loadSharedFile(id);
+
+  if (!isLocalBackend()) {
+    const supabase = getSupabaseForStore();
+    const { error } = await supabase.from("shared_files").delete().eq("id", id);
+    if (error) throw error;
+    return file;
+  }
+
+  getLocalDb().prepare("delete from shared_files where id = ?").run(id);
+  return file;
 }
 
 export async function getAppSettings() {

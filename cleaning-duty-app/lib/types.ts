@@ -118,6 +118,16 @@ export type Notification = {
   error_message: string | null;
 };
 
+export type SharedFile = {
+  id: string;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  storage_path: string;
+  uploaded_by: string | null;
+  created_at: string;
+};
+
 export type AppSettings = {
   id: true;
   timezone: string;

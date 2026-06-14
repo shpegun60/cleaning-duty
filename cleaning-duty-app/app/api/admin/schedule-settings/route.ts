@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { getAppSettings, updateAppSettings, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  getAppSettings,
+  updateAppSettings,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const ScheduleSettingsSchema = z.object({
@@ -14,6 +19,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = ScheduleSettingsSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const current = await getAppSettings();
 
     await updateAppSettings({

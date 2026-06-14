@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/guards";
 import { generateTemporaryPassword } from "@/lib/auth/passwords";
 import { readRuntimeConfig } from "@/lib/config/runtime";
 import {
+  assertScheduleIsEmptyForRosterConfig,
   createNotificationIfMissing,
   createProfile,
   markNotificationFailed,
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = InviteUserSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const password = generateTemporaryPassword();
     const userId = await createProfile({
       email: body.email,

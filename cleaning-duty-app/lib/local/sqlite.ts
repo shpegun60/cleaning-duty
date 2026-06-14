@@ -164,6 +164,16 @@ function initializeLocalDb(db: DatabaseSync) {
       created_at text not null default current_timestamp
     );
 
+    create table if not exists shared_files (
+      id text primary key,
+      original_name text not null,
+      mime_type text not null,
+      size_bytes integer not null,
+      storage_path text not null,
+      uploaded_by text references profiles(id),
+      created_at text not null default current_timestamp
+    );
+
     create table if not exists app_settings (
       id integer primary key check (id = 1),
       timezone text not null default 'Europe/Warsaw',

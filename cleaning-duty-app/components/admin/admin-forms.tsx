@@ -47,7 +47,7 @@ function intOrNull(value: FormDataEntryValue | null) {
   return stringValue === "" ? null : Number(stringValue);
 }
 
-export function InviteUserForm() {
+export function InviteUserForm({ scheduleLocked = false }: { scheduleLocked?: boolean }) {
   const { message, run } = useApiForm();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -68,21 +68,28 @@ export function InviteUserForm() {
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <h2 className="text-base font-semibold">Запросити користувача</h2>
-      <input className="h-10 rounded-md border px-3" name="fullName" placeholder="Ім'я" required />
-      <input className="h-10 rounded-md border px-3" name="email" placeholder="email@example.com" type="email" required />
+      {scheduleLocked ? <ScheduleLockedNotice /> : null}
+      <input className="h-10 rounded-md border px-3" name="fullName" placeholder="Ім'я" required disabled={scheduleLocked} />
+      <input className="h-10 rounded-md border px-3" name="email" placeholder="email@example.com" type="email" required disabled={scheduleLocked} />
       <div className="grid gap-3">
-        <select className="h-10 rounded-md border px-3" name="role" defaultValue="worker">
+        <select className="h-10 rounded-md border px-3" name="role" defaultValue="worker" disabled={scheduleLocked}>
           <option value="worker">worker</option>
           <option value="admin">admin</option>
         </select>
       </div>
-      <Button type="submit" className="w-full">Запросити</Button>
+      <Button type="submit" className="w-full" disabled={scheduleLocked}>Запросити</Button>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
 }
 
-export function UserEditForm({ profile }: { profile: Profile }) {
+export function UserEditForm({
+  profile,
+  scheduleLocked = false,
+}: {
+  profile: Profile;
+  scheduleLocked?: boolean;
+}) {
   const { message, run } = useApiForm();
   const isAdmin = profile.role === "admin";
   const isLocalAdmin = profile.id === "local-admin";
@@ -132,7 +139,7 @@ export function UserEditForm({ profile }: { profile: Profile }) {
       <input className="h-10 rounded-md border px-3" name="fullName" defaultValue={profile.full_name} required />
       <div className="grid gap-3 sm:grid-cols-3">
         {isLocalAdmin ? <input type="hidden" name="role" value="admin" /> : null}
-        <select className="h-10 rounded-md border px-3" name="role" defaultValue={profile.role} disabled={isLocalAdmin}>
+        <select className="h-10 rounded-md border px-3" name="role" defaultValue={profile.role} disabled={isLocalAdmin || scheduleLocked}>
           <option value="worker">worker</option>
           <option value="admin">admin</option>
         </select>
@@ -142,29 +149,43 @@ export function UserEditForm({ profile }: { profile: Profile }) {
           defaultValue={isAdmin ? "" : profile.rotation_order ?? ""}
           type="number"
           min={1}
-          disabled={isAdmin}
+          disabled={isAdmin || scheduleLocked}
           placeholder={isAdmin ? "Admin is not in rotation" : "Rotation order"}
         />
         <label className="flex items-center gap-2 text-sm">
           {isLocalAdmin ? <input type="hidden" name="isActive" value="on" /> : null}
-          <input name="isActive" type="checkbox" defaultChecked={profile.is_active} disabled={isLocalAdmin} />
+          <input name="isActive" type="checkbox" defaultChecked={profile.is_active} disabled={isLocalAdmin || scheduleLocked} />
           active
         </label>
       </div>
+      {scheduleLocked ? (
+        <>
+          <input type="hidden" name="role" value={profile.role} />
+          <input type="hidden" name="rotationOrder" value={isAdmin ? "" : profile.rotation_order ?? ""} />
+          {profile.is_active ? <input type="hidden" name="isActive" value="on" /> : null}
+        </>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2">
         <Button type="submit" variant="secondary" className="w-full">Зберегти</Button>
         {!isAdmin ? (
-          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete} disabled={scheduleLocked}>
             Видалити
           </Button>
         ) : null}
       </div>
+      {scheduleLocked ? <ScheduleLockedNotice /> : null}
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
 }
 
-export function RoomForm({ room }: { room?: Room }) {
+export function RoomForm({
+  room,
+  scheduleLocked = false,
+}: {
+  room?: Room;
+  scheduleLocked?: boolean;
+}) {
   const { message, run } = useApiForm();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -199,20 +220,21 @@ export function RoomForm({ room }: { room?: Room }) {
 
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-      <input className="h-10 rounded-md border px-3" name="name" placeholder="Назва кімнати" defaultValue={room?.name ?? ""} required />
-      <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={room?.description ?? ""} />
+      {scheduleLocked ? <ScheduleLockedNotice /> : null}
+      <input className="h-10 rounded-md border px-3" name="name" placeholder="Назва кімнати" defaultValue={room?.name ?? ""} required disabled={scheduleLocked} />
+      <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={room?.description ?? ""} disabled={scheduleLocked} />
       <div className="grid gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <input name="isActive" type="checkbox" defaultChecked={room?.is_active ?? true} />
+          <input name="isActive" type="checkbox" defaultChecked={room?.is_active ?? true} disabled={scheduleLocked} />
           active
         </label>
       </div>
       <div className={room ? "grid gap-2 sm:grid-cols-2" : "grid gap-2"}>
-        <Button type="submit" variant={room ? "secondary" : "primary"} className="w-full">
+        <Button type="submit" variant={room ? "secondary" : "primary"} className="w-full" disabled={scheduleLocked}>
           {room ? "Зберегти кімнату" : "Створити кімнату"}
         </Button>
         {room ? (
-          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete} disabled={scheduleLocked}>
             Видалити
           </Button>
         ) : null}
@@ -222,7 +244,15 @@ export function RoomForm({ room }: { room?: Room }) {
   );
 }
 
-export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
+export function TaskForm({
+  task,
+  rooms,
+  scheduleLocked = false,
+}: {
+  task?: Task;
+  rooms: Room[];
+  scheduleLocked?: boolean;
+}) {
   const { message, run } = useApiForm();
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -258,25 +288,26 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
 
   return (
     <form onSubmit={onSubmit} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
-      <select className="h-10 rounded-md border px-3" name="roomId" defaultValue={task?.room_id ?? rooms[0]?.id} required>
+      {scheduleLocked ? <ScheduleLockedNotice /> : null}
+      <select className="h-10 rounded-md border px-3" name="roomId" defaultValue={task?.room_id ?? rooms[0]?.id} required disabled={scheduleLocked}>
         {rooms.map((room) => (
           <option key={room.id} value={room.id}>{room.name}</option>
         ))}
       </select>
-      <input className="h-10 rounded-md border px-3" name="title" placeholder="Назва роботи" defaultValue={task?.title ?? ""} required />
-      <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={task?.description ?? ""} />
+      <input className="h-10 rounded-md border px-3" name="title" placeholder="Назва роботи" defaultValue={task?.title ?? ""} required disabled={scheduleLocked} />
+      <textarea className="min-h-20 rounded-md border px-3 py-2" name="description" placeholder="Опис" defaultValue={task?.description ?? ""} disabled={scheduleLocked} />
       <div className="grid gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <input name="isActive" type="checkbox" defaultChecked={task?.is_active ?? true} />
+          <input name="isActive" type="checkbox" defaultChecked={task?.is_active ?? true} disabled={scheduleLocked} />
           active
         </label>
       </div>
       <div className={task ? "grid gap-2 sm:grid-cols-2" : "grid gap-2"}>
-        <Button type="submit" variant={task ? "secondary" : "primary"} className="w-full">
+        <Button type="submit" variant={task ? "secondary" : "primary"} className="w-full" disabled={scheduleLocked}>
           {task ? "Зберегти роботу" : "Створити роботу"}
         </Button>
         {task ? (
-          <Button type="button" variant="danger" className="w-full" onClick={onDelete}>
+          <Button type="button" variant="danger" className="w-full" onClick={onDelete} disabled={scheduleLocked}>
             Видалити
           </Button>
         ) : null}
@@ -286,7 +317,13 @@ export function TaskForm({ task, rooms }: { task?: Task; rooms: Room[] }) {
   );
 }
 
-export function RotationForm({ profiles }: { profiles: Profile[] }) {
+export function RotationForm({
+  profiles,
+  scheduleLocked = false,
+}: {
+  profiles: Profile[];
+  scheduleLocked?: boolean;
+}) {
   const { message, run } = useApiForm();
   const profileKey = rotationProfileKey(profiles);
   const [rotationState, setRotationState] = useState(() => ({
@@ -301,10 +338,13 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (scheduleLocked) return;
     await saveRotation(items);
   }
 
   async function saveRotation(rotationItems: Array<{ profile: Profile; rotationOrder: number }>) {
+    if (scheduleLocked) return;
+
     await run(async () => {
       await postJson("/api/admin/reorder-rotation", {
         items: rotationItems.map((item) => ({
@@ -316,6 +356,8 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
   }
 
   async function onReorderNumbers() {
+    if (scheduleLocked) return;
+
     const normalizedItems = renumberRotationItems(items);
     setRotationState({
       profileKey,
@@ -325,6 +367,8 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
   }
 
   function moveProfileToOrder(userId: string, value: string) {
+    if (scheduleLocked) return;
+
     const parsed = Number(value);
     if (!Number.isInteger(parsed)) return;
 
@@ -343,6 +387,8 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
   }
 
   function onDragOver(targetId: string) {
+    if (scheduleLocked) return;
+
     if (!draggedId || draggedId === targetId) return;
 
     updateRotationItems(profileKey, profiles, setRotationState, (current) => {
@@ -359,10 +405,11 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
 
   return (
     <form onSubmit={onSubmit} className="grid gap-3">
+      {scheduleLocked ? <ScheduleLockedNotice /> : null}
       {items.map((item) => (
         <div
           key={item.profile.id}
-          draggable
+          draggable={!scheduleLocked}
           onDragStart={() => setDraggedId(item.profile.id)}
           onDragOver={(event) => {
             event.preventDefault();
@@ -394,15 +441,16 @@ export function RotationForm({ profiles }: { profiles: Profile[] }) {
             type="number"
             min={1}
             max={items.length}
+            disabled={scheduleLocked}
             onChange={(event) => moveProfileToOrder(item.profile.id, event.currentTarget.value)}
           />
         </div>
       ))}
       <div className="grid gap-2 sm:grid-cols-2">
-        <Button type="button" variant="secondary" className="w-full" onClick={onReorderNumbers}>
+        <Button type="button" variant="secondary" className="w-full" onClick={onReorderNumbers} disabled={scheduleLocked}>
           Вирівняти номери
         </Button>
-        <Button type="submit" className="w-full">Зберегти порядок</Button>
+        <Button type="submit" className="w-full" disabled={scheduleLocked}>Зберегти порядок</Button>
       </div>
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
@@ -469,14 +517,24 @@ function renumberRotationItems(
   }));
 }
 
+function ScheduleLockedNotice() {
+  return (
+    <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      Графік вже побудовано. Спочатку очисти весь графік у вкладці Графік, потім змінюй людей, кімнати, роботи або rotation order.
+    </p>
+  );
+}
+
 export function ScheduleTools({
   profiles,
   failedNotifications,
   settings,
+  scheduleLocked = false,
 }: {
   profiles: Profile[];
   failedNotifications: Notification[];
   settings: AppSettings;
+  scheduleLocked?: boolean;
 }) {
   const { message, run } = useApiForm();
   const activeRotationWorkers = profiles.filter(
@@ -555,6 +613,7 @@ export function ScheduleTools({
               type="number"
               min={1}
               max={12}
+              disabled={scheduleLocked}
             />
           </label>
           <label className="grid gap-1 text-sm">
@@ -563,6 +622,7 @@ export function ScheduleTools({
               className="h-10 rounded-md border px-3"
               name="rotationPeriodUnit"
               defaultValue={settings.rotation_period_unit}
+              disabled={scheduleLocked}
             >
               <option value="day">день / дні</option>
               <option value="week">тиждень / тижні</option>
@@ -570,7 +630,8 @@ export function ScheduleTools({
             </select>
           </label>
         </div>
-        <Button type="submit" className="w-full">Зберегти налаштування</Button>
+        {scheduleLocked ? <ScheduleLockedNotice /> : null}
+        <Button type="submit" className="w-full" disabled={scheduleLocked}>Зберегти налаштування</Button>
       </form>
 
       <form onSubmit={regenerate} className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">

@@ -1,13 +1,18 @@
 import { TaskForm } from "@/components/admin/admin-forms";
-import { listRooms, listTasks } from "@/lib/data/store";
+import { hasDutySchedule, listRooms, listTasks } from "@/lib/data/store";
 import type { Room, Task } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminTasksPage() {
-  const [roomList, taskList] = (await Promise.all([listRooms(), listTasks()])) as [
+  const [roomList, taskList, scheduleLocked] = (await Promise.all([
+    listRooms(),
+    listTasks(),
+    hasDutySchedule(),
+  ])) as [
     Room[],
     Task[],
+    boolean,
   ];
 
   return (
@@ -16,10 +21,10 @@ export default async function AdminTasksPage() {
         <h1 className="text-2xl font-bold">Роботи</h1>
         <p className="mt-1 text-stone-600">Роботи прив&apos;язані до кімнат і сортуються всередині них.</p>
       </div>
-      <TaskForm rooms={roomList.filter((room) => room.is_active)} />
+      <TaskForm rooms={roomList.filter((room) => room.is_active)} scheduleLocked={scheduleLocked} />
       <div className="grid gap-3">
         {taskList.map((task) => (
-          <TaskForm key={task.id} rooms={roomList} task={task} />
+          <TaskForm key={task.id} rooms={roomList} task={task} scheduleLocked={scheduleLocked} />
         ))}
       </div>
     </div>

@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { removeRoom, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  removeRoom,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const DeleteRoomSchema = z.object({
@@ -12,6 +16,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = DeleteRoomSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const result = await removeRoom(body.id);
 
     await writeAuditLog({

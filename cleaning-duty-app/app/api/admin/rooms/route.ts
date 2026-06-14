@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { upsertRoom, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  upsertRoom,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const RoomSchema = z.object({
@@ -16,6 +20,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = RoomSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const id = await upsertRoom({
       id: body.id,
       name: body.name,

@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { loadActiveRoom, upsertTask, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  loadActiveRoom,
+  upsertTask,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const TaskSchema = z.object({
@@ -17,6 +22,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = TaskSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
 
     if (body.isActive) {
       await loadActiveRoom(body.roomId);

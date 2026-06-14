@@ -70,6 +70,9 @@ export function ScheduleCalendar({
   viewEnd,
   isCustomRange,
   changes,
+  readOnly = false,
+  pagePath = "/admin/schedule",
+  extraQuery,
 }: {
   duties: DutyPeriod[];
   profiles: Profile[];
@@ -78,6 +81,9 @@ export function ScheduleCalendar({
   viewEnd: string;
   isCustomRange: boolean;
   changes: AssigneeChange[];
+  readOnly?: boolean;
+  pagePath?: string;
+  extraQuery?: Record<string, string>;
 }) {
   const router = useRouter();
   const [editingDutyId, setEditingDutyId] = useState<string | null>(null);
@@ -160,11 +166,11 @@ export function ScheduleCalendar({
   }
 
   function goToMonth(targetMonth: string) {
-    router.push(`/admin/schedule?month=${targetMonth}`, { scroll: false });
+    router.push(calendarUrl(pagePath, extraQuery, { month: targetMonth }), { scroll: false });
   }
 
   function goToRange(startDate: string, endDate: string) {
-    router.push(`/admin/schedule?start=${startDate}&end=${endDate}`, { scroll: false });
+    router.push(calendarUrl(pagePath, extraQuery, { start: startDate, end: endDate }), { scroll: false });
   }
 
   function chooseMonth(event: FormEvent<HTMLInputElement>) {
@@ -345,56 +351,69 @@ export function ScheduleCalendar({
                 </div>
                 {duty ? (
                   <div className={`rounded-md border px-2 py-1.5 text-xs ${style}`}>
-                    <Link href={`/duty/${duty.id}`} className="block">
-                      <span className="block truncate font-semibold">
-                        {assignee?.full_name ?? duty.assignee_id}
+                    {readOnly ? (
+                      <span className="block">
+                        <span className="block truncate font-semibold">
+                          {assignee?.full_name ?? duty.assignee_id}
+                        </span>
+                        <span className="block truncate opacity-80">
+                          {duty.week_start} - {duty.week_end}
+                        </span>
                       </span>
-                      <span className="block truncate opacity-80">
-                        {duty.week_start} - {duty.week_end}
-                      </span>
-                    </Link>
+                    ) : (
+                      <Link href={`/duty/${duty.id}`} className="block">
+                        <span className="block truncate font-semibold">
+                          {assignee?.full_name ?? duty.assignee_id}
+                        </span>
+                        <span className="block truncate opacity-80">
+                          {duty.week_start} - {duty.week_end}
+                        </span>
+                      </Link>
+                    )}
                     {isChanged ? (
                       <span className="mt-1 inline-flex rounded-md bg-fuchsia-200 px-1.5 py-0.5 text-[11px] font-semibold text-fuchsia-950">
                         Змінено
                       </span>
                     ) : null}
-                    <div className="mt-2 grid gap-1">
-                      <button
-                        type="button"
-                        className="min-h-8 w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-stone-900 hover:bg-stone-100"
-                        onClick={() => setEditingDutyId(duty.id)}
-                        disabled={busy || activeRotationWorkers.length < 2}
-                      >
-                        Змінити
-                      </button>
-                      {latestChange ? (
+                    {!readOnly ? (
+                      <div className="mt-2 grid gap-1">
                         <button
                           type="button"
-                          className="min-h-8 w-full rounded-md border border-red-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-red-800 hover:bg-red-50"
-                          onClick={() => revertChange(latestChange.id)}
-                          disabled={busy}
+                          className="min-h-8 w-full rounded-md border border-stone-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-stone-900 hover:bg-stone-100"
+                          onClick={() => setEditingDutyId(duty.id)}
+                          disabled={busy || activeRotationWorkers.length < 2}
                         >
-                          Відмінити
+                          Змінити
                         </button>
-                      ) : null}
-                    </div>
+                        {latestChange ? (
+                          <button
+                            type="button"
+                            className="min-h-8 w-full rounded-md border border-red-300 bg-white px-2 py-1 text-center text-xs font-semibold leading-tight text-red-800 hover:bg-red-50"
+                            onClick={() => revertChange(latestChange.id)}
+                            disabled={busy}
+                          >
+                            Відмінити
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {isHandoverDay && duty ? (
-                  <Link
-                    href={`/handover/${duty.id}`}
-                    className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
-                  >
-                    <span className="flex items-center justify-between gap-2">
-                      <span className="truncate">{handoverDisplayLabel(duty, nextAssignee)}</span>
-                      <StatusBadge status={duty.status} />
-                    </span>
-                    {duty.reject_comment ? (
-                      <span className="mt-1 block truncate text-[11px] font-medium">
-                        {duty.reject_comment}
-                      </span>
-                    ) : null}
-                  </Link>
+                  readOnly ? (
+                    <div
+                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                    >
+                      <HandoverContent duty={duty} nextAssignee={nextAssignee} />
+                    </div>
+                  ) : (
+                    <Link
+                      href={`/handover/${duty.id}`}
+                      className={`mt-2 block rounded-md border px-2 py-1 text-xs font-semibold ${handoverClassName(duty.status)}`}
+                    >
+                      <HandoverContent duty={duty} nextAssignee={nextAssignee} />
+                    </Link>
+                  )
                 ) : null}
               </div>
             );
@@ -409,11 +428,12 @@ export function ScheduleCalendar({
         latestChangeByDutyId={latestChangeByDutyId}
         busy={busy}
         onRevert={revertChange}
+        readOnly={readOnly}
       />
 
       {message ? <p className="mt-3 text-sm text-stone-700">{message}</p> : null}
 
-      {editingDuty ? (
+      {editingDuty && !readOnly ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/30 p-4">
           <form
             onSubmit={changeAssignee}
@@ -479,6 +499,7 @@ function AssigneeChangesTable({
   latestChangeByDutyId,
   busy,
   onRevert,
+  readOnly,
 }: {
   changes: AssigneeChange[];
   dutyMap: Map<string, DutyPeriod>;
@@ -486,6 +507,7 @@ function AssigneeChangesTable({
   latestChangeByDutyId: Map<string, AssigneeChange>;
   busy: boolean;
   onRevert: (changeId: string) => void;
+  readOnly: boolean;
 }) {
   if (changes.length === 0) {
     return null;
@@ -529,21 +551,57 @@ function AssigneeChangesTable({
                 </span>
                 <span className="block">{change.reason}</span>
               </span>
-              <button
-                type="button"
-                className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => onRevert(change.id)}
-                disabled={busy || !isLatest}
-                title={isLatest ? "Відмінити зміну" : "Спочатку відміни новішу зміну цього періоду"}
-              >
-                Відмінити
-              </button>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  className="rounded-md border border-red-300 bg-white px-3 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => onRevert(change.id)}
+                  disabled={busy || !isLatest}
+                  title={isLatest ? "Відмінити зміну" : "Спочатку відміни новішу зміну цього періоду"}
+                >
+                  Відмінити
+                </button>
+              ) : null}
             </div>
           );
         })}
       </div>
     </div>
   );
+}
+
+function HandoverContent({
+  duty,
+  nextAssignee,
+}: {
+  duty: DutyPeriod;
+  nextAssignee: Profile | undefined | null;
+}) {
+  return (
+    <>
+      <span className="flex items-center justify-between gap-2">
+        <span className="truncate">{handoverDisplayLabel(duty, nextAssignee)}</span>
+        <StatusBadge status={duty.status} />
+      </span>
+      {duty.reject_comment ? (
+        <span className="mt-1 block truncate text-[11px] font-medium">
+          {duty.reject_comment}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+function calendarUrl(
+  pagePath: string,
+  extraQuery: Record<string, string> | undefined,
+  params: Record<string, string>,
+) {
+  const query = new URLSearchParams({
+    ...(extraQuery ?? {}),
+    ...params,
+  });
+  return `${pagePath}?${query.toString()}`;
 }
 
 function profileName(profileMap: Map<string, Profile>, profileId: string | null) {

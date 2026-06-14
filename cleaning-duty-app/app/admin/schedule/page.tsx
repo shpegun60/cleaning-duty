@@ -2,6 +2,7 @@ import { ScheduleTools } from "@/components/admin/admin-forms";
 import { ScheduleCalendar } from "@/components/admin/schedule-calendar";
 import {
   getAppSettings,
+  hasDutySchedule,
   listActiveAssigneeChangesForDuties,
   listDutiesInRange,
   listFailedNotifications,
@@ -35,13 +36,14 @@ export default async function AdminSchedulePage({
     start: params?.start,
     end: params?.end,
   });
-  const [calendarDutyList, profileList, notificationList, settings] =
+  const [calendarDutyList, profileList, notificationList, settings, scheduleLocked] =
     (await Promise.all([
       listDutiesInRange(range.gridStart, range.gridEnd),
       listProfiles(),
       listFailedNotifications(),
       getAppSettings(),
-    ])) as [DutyPeriod[], Profile[], Notification[], AppSettings];
+      hasDutySchedule(),
+    ])) as [DutyPeriod[], Profile[], Notification[], AppSettings, boolean];
   const activeChanges = (await listActiveAssigneeChangesForDuties(
     calendarDutyList.map((duty) => duty.id),
   )) as AssigneeChange[];
@@ -59,6 +61,7 @@ export default async function AdminSchedulePage({
         failedNotifications={notificationList}
         profiles={profileList}
         settings={settings}
+        scheduleLocked={scheduleLocked}
       />
       <ScheduleCalendar
         duties={calendarDutyList}

@@ -1,11 +1,14 @@
 import { InviteUserForm, UserEditForm } from "@/components/admin/admin-forms";
-import { listProfiles } from "@/lib/data/store";
+import { hasDutySchedule, listProfiles } from "@/lib/data/store";
 import type { Profile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminUsersPage() {
-  const profiles = (await listProfiles()) as Profile[];
+  const [profiles, scheduleLocked] = (await Promise.all([
+    listProfiles(),
+    hasDutySchedule(),
+  ])) as [Profile[], boolean];
 
   return (
     <div className="grid gap-6">
@@ -13,10 +16,10 @@ export default async function AdminUsersPage() {
         <h1 className="text-2xl font-bold">Люди</h1>
         <p className="mt-1 text-stone-600">Запрошення, ролі, active flag і rotation order.</p>
       </div>
-      <InviteUserForm />
+      <InviteUserForm scheduleLocked={scheduleLocked} />
       <div className="grid gap-3">
         {profiles.map((profile) => (
-          <UserEditForm key={profile.id} profile={profile} />
+          <UserEditForm key={profile.id} profile={profile} scheduleLocked={scheduleLocked} />
         ))}
       </div>
     </div>

@@ -11,6 +11,7 @@ const links = [
   ["/admin/tasks", "Роботи"],
   ["/admin/rotation", "Rotation"],
   ["/admin/schedule", "Графік"],
+  ["/admin/files", "Файли"],
 ];
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {

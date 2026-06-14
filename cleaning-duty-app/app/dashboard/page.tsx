@@ -1,17 +1,56 @@
-import Link from "next/link";
-
+import { DashboardTabs } from "@/components/dashboard/dashboard-tabs";
 import { AppShell } from "@/components/layout/app-shell";
 import { ButtonLink } from "@/components/ui/button";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { requireUserPage } from "@/lib/auth/page-guards";
-import { listDutiesForUser } from "@/lib/data/store";
-import type { DutyPeriod } from "@/lib/types";
+import {
+  listActiveAssigneeChangesForDuties,
+  listDutiesForUser,
+  listDutiesInRange,
+  listProfiles,
+  listSharedFiles,
+} from "@/lib/data/store";
+import { scheduleViewRange } from "@/lib/domain/schedule-calendar";
+import type { AssigneeChange, DutyPeriod, Profile, SharedFile } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{
+    tab?: string | string[];
+    month?: string | string[];
+    start?: string | string[];
+    end?: string | string[];
+  }>;
+}) {
   const user = await requireUserPage();
-  const duties = await listDutiesForUser(user.id);
+  const params = await searchParams;
+  const range = scheduleViewRange({
+    month: params?.month,
+    start: params?.start,
+    end: params?.end,
+  });
+  const [duties, calendarDuties, profiles, files] = (await Promise.all([
+    listDutiesForUser(user.id),
+    listDutiesInRange(range.gridStart, range.gridEnd),
+    listProfiles(),
+    listSharedFiles(),
+  ])) as [DutyPeriod[], DutyPeriod[], Profile[], SharedFile[]];
+  const changes = (await listActiveAssigneeChangesForDuties(
+    calendarDuties.map((duty) => duty.id),
+  )) as AssigneeChange[];
+  const publicProfiles = profiles.map((profile) => ({
+    id: profile.id,
+    email: "",
+    full_name: profile.full_name,
+    role: profile.role,
+    rotation_order: profile.rotation_order,
+    is_active: profile.is_active,
+    created_at: profile.created_at,
+    updated_at: profile.updated_at,
+  }));
+  const tab = normalizeDashboardTab(params?.tab);
 
   return (
     <AppShell user={user}>
@@ -19,45 +58,35 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-2xl font-bold">Моє чергування</h1>
           <p className="mt-1 text-stone-600">
-            Тут показане твоє поточне чергування і приймання, якщо воно очікується.
+            Тут показано твої події, загальний календар чергувань і файли від адміна.
           </p>
         </div>
         {user.role === "admin" ? <ButtonLink href="/admin">Адмінка</ButtonLink> : null}
       </div>
 
-      <div className="grid gap-3">
-        {(duties as DutyPeriod[]).map((duty) => (
-          <section key={duty.id} className="rounded-md border border-stone-200 bg-white p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold">
-                  {duty.week_start} - {duty.week_end}
-                </p>
-                <div className="mt-2">
-                  <StatusBadge status={duty.status} />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {duty.assignee_id === user.id ? (
-                  <Link className="rounded-md border px-3 py-2 text-sm font-semibold hover:bg-stone-100" href={`/duty/${duty.id}`}>
-                    Роботи
-                  </Link>
-                ) : null}
-                {duty.next_assignee_id === user.id ? (
-                  <Link className="rounded-md border px-3 py-2 text-sm font-semibold hover:bg-stone-100" href={`/handover/${duty.id}`}>
-                    Приймання
-                  </Link>
-                ) : null}
-              </div>
-            </div>
-          </section>
-        ))}
-        {duties.length === 0 ? (
-          <section className="rounded-md border border-stone-200 bg-white p-6 text-stone-600">
-            Активних або майбутніх чергувань для тебе поки немає.
-          </section>
-        ) : null}
-      </div>
+      <DashboardTabs
+        duties={duties}
+        user={user}
+        calendarDuties={calendarDuties}
+        profiles={publicProfiles}
+        changes={changes}
+        files={files}
+        month={range.month}
+        viewStart={range.start ?? range.gridStart}
+        viewEnd={range.end ?? range.gridEnd}
+        isCustomRange={range.mode === "range"}
+        initialTab={tab}
+      />
     </AppShell>
   );
+}
+
+function normalizeDashboardTab(value: string | string[] | undefined) {
+  const tab = Array.isArray(value) ? value[0] : value;
+
+  if (tab === "calendar" || tab === "files") {
+    return tab;
+  }
+
+  return "duties";
 }

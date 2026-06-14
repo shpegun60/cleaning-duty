@@ -1,7 +1,11 @@
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
-import { removeProfile, writeAuditLog } from "@/lib/data/store";
+import {
+  assertScheduleIsEmptyForRosterConfig,
+  removeProfile,
+  writeAuditLog,
+} from "@/lib/data/store";
 import { handleRouteError } from "@/lib/http";
 
 const DeleteUserSchema = z.object({
@@ -12,6 +16,7 @@ export async function POST(request: Request) {
   try {
     const admin = await requireAdmin();
     const body = DeleteUserSchema.parse(await request.json());
+    await assertScheduleIsEmptyForRosterConfig();
     const result = await removeProfile(body.userId);
 
     await writeAuditLog({
