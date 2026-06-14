@@ -11,6 +11,12 @@ type RoomItem = {
   name: string;
   description: string | null;
   isAccepted: boolean;
+  tasks: Array<{
+    id: string;
+    title: string;
+    description: string | null;
+    isChecked: boolean;
+  }>;
 };
 
 const WORKER_HANDOVER_STATUSES: DutyStatus[] = [
@@ -164,23 +170,58 @@ export function HandoverChecklist({
         <h2 className="mb-3 text-lg font-semibold">Кімнати</h2>
         <div className="grid gap-2">
           {rooms.map((room) => (
-            <label
+            <section
               key={room.id}
-              className="grid grid-cols-[24px_1fr] gap-3 rounded-md border border-stone-100 p-3"
+              className="rounded-md border border-stone-100 p-3"
             >
-              <input
-                type="checkbox"
-                checked={Boolean(accepted.get(room.id))}
-                disabled={!canEdit}
-                onChange={(event) => toggleRoom(room.id, event.target.checked)}
-              />
-              <span>
-                <span className="block font-medium">{room.name}</span>
-                {room.description ? (
-                  <span className="text-sm text-stone-600">{room.description}</span>
+              <label className="grid grid-cols-[24px_1fr] gap-3">
+                <input
+                  type="checkbox"
+                  checked={Boolean(accepted.get(room.id))}
+                  disabled={!canEdit}
+                  onChange={(event) => toggleRoom(room.id, event.target.checked)}
+                />
+                <span>
+                  <span className="block font-medium">{room.name}</span>
+                  {room.description ? (
+                    <span className="text-sm text-stone-600">{room.description}</span>
+                  ) : null}
+                </span>
+              </label>
+              <div className="mt-3 grid gap-2 pl-9">
+                <p className="text-xs font-semibold uppercase text-stone-500">
+                  Роботи, які відмітив прибиральник
+                </p>
+                {room.tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="grid grid-cols-[22px_1fr] gap-2 rounded-md bg-stone-50 px-3 py-2 text-sm text-stone-600"
+                  >
+                    <input
+                      aria-label={task.title}
+                      checked={task.isChecked}
+                      className="mt-0.5"
+                      disabled
+                      readOnly
+                      type="checkbox"
+                    />
+                    <span>
+                      <span className="block font-medium text-stone-700">{task.title}</span>
+                      {task.description ? (
+                        <span className="block text-xs text-stone-500">
+                          {task.description}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                ))}
+                {room.tasks.length === 0 ? (
+                  <p className="rounded-md bg-stone-50 px-3 py-2 text-sm text-stone-500">
+                    Активних робіт у кімнаті немає.
+                  </p>
                 ) : null}
-              </span>
-            </label>
+              </div>
+            </section>
           ))}
         </div>
       </section>

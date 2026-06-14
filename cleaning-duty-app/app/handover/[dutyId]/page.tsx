@@ -8,10 +8,12 @@ import {
   isDutyRepeatedAfterRejectedHandover,
   listRoomAcceptances,
   listRooms,
+  listTaskChecks,
+  listTasks,
   loadDutyPeriod,
   loadProfile,
 } from "@/lib/data/store";
-import type { Room, RoomAcceptance } from "@/lib/types";
+import type { Room, RoomAcceptance, Task, TaskCheck } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +30,10 @@ export default async function HandoverPage({
     notFound();
   }
 
-  const [rooms, acceptances] = await Promise.all([
+  const [rooms, tasks, taskChecks, acceptances] = await Promise.all([
     listRooms({ activeOnly: true }),
+    listTasks({ activeOnly: true }),
+    listTaskChecks(duty.id),
     listRoomAcceptances(duty.id),
   ]);
   const previous = await loadProfile(duty.assignee_id);
@@ -47,11 +51,27 @@ export default async function HandoverPage({
     )
     .sort()
     .join("|");
+  const taskChecklistKey = (taskChecks as TaskCheck[])
+    .map((check) => `${check.task_id}:${check.is_checked ? 1 : 0}:${check.checked_at ?? ""}`)
+    .sort()
+    .join("|");
+  const taskCheckMap = new Map(
+    (taskChecks as TaskCheck[]).map((check) => [check.task_id, check.is_checked]),
+  );
+  const activeTasks = tasks as Task[];
   const roomItems = (rooms as Room[]).map((room) => ({
     id: room.id,
     name: room.name,
     description: room.description,
     isAccepted: acceptanceMap.get(room.id) === "accepted",
+    tasks: activeTasks
+      .filter((task) => task.room_id === room.id)
+      .map((task) => ({
+        id: task.id,
+        title: task.title,
+        description: task.description,
+        isChecked: Boolean(taskCheckMap.get(task.id)),
+      })),
   }));
 
   return (
@@ -82,7 +102,7 @@ export default async function HandoverPage({
         </dl>
       </div>
       <HandoverChecklist
-        key={`${duty.id}:${duty.status}:${checklistKey}`}
+        key={`${duty.id}:${duty.status}:${checklistKey}:${taskChecklistKey}`}
         dutyPeriodId={duty.id}
         canOverride={user.role === "admin"}
         cleaningDone={Boolean(duty.cleaned_at)}
