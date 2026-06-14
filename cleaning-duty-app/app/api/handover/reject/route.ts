@@ -28,7 +28,6 @@ const WORKER_HANDOVER_STATUSES = ["cleaning_done", "handover_pending", "ready_fo
 const ADMIN_HANDOVER_STATUSES = [
   "cleaning_done",
   "handover_pending",
-  "rejected",
   "ready_for_recheck",
 ];
 
@@ -41,6 +40,10 @@ export async function POST(request: Request) {
 
     if (duty.next_assignee_id !== user.id && !isAdmin) {
       throw forbidden("Only the next assignee can reject handover");
+    }
+
+    if (duty.status === "rejected") {
+      throw conflict("Duty is already rejected. Wait for recheck or cancel handover.");
     }
 
     if (

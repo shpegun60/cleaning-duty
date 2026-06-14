@@ -21,7 +21,6 @@ const WORKER_HANDOVER_STATUSES: DutyStatus[] = [
 const ADMIN_HANDOVER_STATUSES: DutyStatus[] = [
   "cleaning_done",
   "handover_pending",
-  "rejected",
   "ready_for_recheck",
 ];
 const HANDOVER_CANCEL_STATUSES: DutyStatus[] = [

@@ -9,7 +9,8 @@ import {
   markNotificationFailed,
   markNotificationSent,
   recordAssigneeChange,
-  resolveHandoverTargetAssigneeId,
+  delayScheduledRotationAfterRejectedHandover,
+  resolveChangedDutyHandoverTargetAssigneeId,
   syncHandoverLinksAroundDuty,
   writeAuditLog,
 } from "@/lib/data/store";
@@ -48,10 +49,10 @@ export async function POST(request: Request) {
       throw conflict("New assignee must be an active worker in rotation");
     }
 
-    const nextAssigneeId = await resolveHandoverTargetAssigneeId({
-      week_start: duty.week_start,
-      assignee_id: newAssignee.id,
-    });
+    const nextAssigneeId = await resolveChangedDutyHandoverTargetAssigneeId(
+      duty,
+      newAssignee.id,
+    );
     const change = await recordAssigneeChange({
       duty,
       newAssigneeId: newAssignee.id,
@@ -60,6 +61,10 @@ export async function POST(request: Request) {
       adminId: admin.id,
     });
     await syncHandoverLinksAroundDuty(duty.id);
+    const updatedDuty = await loadDutyPeriod(duty.id);
+    const scheduleRealignment = ["rejected", "ready_for_recheck"].includes(updatedDuty.status)
+      ? await delayScheduledRotationAfterRejectedHandover(updatedDuty)
+      : null;
 
     const notification = await createNotificationIfMissing({
       dutyPeriodId: duty.id,
@@ -92,6 +97,7 @@ export async function POST(request: Request) {
         nextAssigneeId,
         assigneeChangeId: change.id,
         reason: body.reason,
+        scheduleRealignment,
       },
     });
 

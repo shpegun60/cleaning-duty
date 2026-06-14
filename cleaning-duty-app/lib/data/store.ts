@@ -248,14 +248,41 @@ export async function resolveNextAssignee(currentAssigneeId: string) {
 }
 
 export async function resolveHandoverTargetAssigneeId(
-  duty: Pick<DutyPeriod, "week_start" | "assignee_id">,
+  duty: Pick<DutyPeriod, "week_start" | "assignee_id"> &
+    Partial<Pick<DutyPeriod, "status" | "next_assignee_id">>,
 ) {
+  if (
+    ["rejected", "ready_for_recheck"].includes(duty.status ?? "") &&
+    duty.next_assignee_id &&
+    duty.next_assignee_id !== duty.assignee_id
+  ) {
+    return duty.next_assignee_id;
+  }
+
   const nextDuty = await nextDutyAfter(duty.week_start);
   if (nextDuty) {
     return nextDuty.assignee_id;
   }
 
   return (await resolveNextAssignee(duty.assignee_id)).id;
+}
+
+export async function resolveChangedDutyHandoverTargetAssigneeId(
+  duty: DutyPeriod,
+  newAssigneeId: string,
+) {
+  if (
+    ["rejected", "ready_for_recheck"].includes(duty.status) &&
+    duty.next_assignee_id &&
+    duty.next_assignee_id !== newAssigneeId
+  ) {
+    return duty.next_assignee_id;
+  }
+
+  return resolveHandoverTargetAssigneeId({
+    ...duty,
+    assignee_id: newAssigneeId,
+  });
 }
 
 export function getNextRotationUser(users: Profile[], currentAssigneeId: string) {
@@ -1467,6 +1494,7 @@ async function listScheduledDutiesAfter(startWeek: string) {
 export async function realignScheduledDutiesAfter(
   startWeek: string,
   firstAssigneeId: string,
+  options: { preserveManualChanges?: boolean } = {},
 ) {
   const users = await listActiveRotationProfiles();
 
@@ -1475,27 +1503,49 @@ export async function realignScheduledDutiesAfter(
   }
 
   const duties = await listScheduledDutiesAfter(startWeek);
-  let assigneeId = firstAssigneeId;
-  let updated = 0;
+  const activeChanges =
+    options.preserveManualChanges === false
+      ? []
+      : await listActiveAssigneeChangesForDuties(duties.map((duty) => duty.id));
+  const changedDutyIds = new Set(activeChanges.map((change) => change.duty_period_id));
+  const plannedDuties: Array<{ duty: DutyPeriod; assigneeId: string }> = [];
+  let expectedAssigneeId = firstAssigneeId;
 
   for (const duty of duties) {
-    const nextAssignee = getNextRotationUser(users, assigneeId);
+    const assigneeId = changedDutyIds.has(duty.id)
+      ? duty.assignee_id
+      : expectedAssigneeId;
+
+    plannedDuties.push({ duty, assigneeId });
+    expectedAssigneeId = getNextRotationUser(users, assigneeId).id;
+  }
+
+  let updated = 0;
+
+  for (let index = 0; index < plannedDuties.length; index += 1) {
+    const planned = plannedDuties[index];
+    const nextAssigneeId =
+      plannedDuties[index + 1]?.assigneeId ??
+      getNextRotationUser(users, planned.assigneeId).id;
 
     if (
-      duty.assignee_id !== assigneeId ||
-      duty.next_assignee_id !== nextAssignee.id
+      planned.duty.assignee_id !== planned.assigneeId ||
+      planned.duty.next_assignee_id !== nextAssigneeId
     ) {
-      await updateDutyPeriod(duty.id, {
-        assignee_id: assigneeId,
-        next_assignee_id: nextAssignee.id,
+      await updateDutyPeriod(planned.duty.id, {
+        assignee_id: planned.assigneeId,
+        next_assignee_id: nextAssigneeId,
       });
       updated += 1;
     }
-
-    assigneeId = nextAssignee.id;
   }
 
-  return { updated, skipped: false };
+  return {
+    updated,
+    skipped: false,
+    preservedManualChanges: changedDutyIds.size,
+    firstAssigneeId: plannedDuties[0]?.assigneeId ?? null,
+  };
 }
 
 export async function delayScheduledRotationAfterRejectedHandover(duty: DutyPeriod) {

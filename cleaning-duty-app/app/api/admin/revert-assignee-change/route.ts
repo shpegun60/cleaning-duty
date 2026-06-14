@@ -2,6 +2,8 @@ import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth/guards";
 import {
+  delayScheduledRotationAfterRejectedHandover,
+  loadDutyPeriod,
   revertAssigneeChange,
   syncHandoverLinksAroundDuty,
   writeAuditLog,
@@ -18,6 +20,10 @@ export async function POST(request: Request) {
     const body = RevertAssigneeChangeSchema.parse(await request.json());
     const change = await revertAssigneeChange(body.changeId, admin.id);
     await syncHandoverLinksAroundDuty(change.duty_period_id);
+    const duty = await loadDutyPeriod(change.duty_period_id);
+    const scheduleRealignment = ["rejected", "ready_for_recheck"].includes(duty.status)
+      ? await delayScheduledRotationAfterRejectedHandover(duty)
+      : null;
 
     await writeAuditLog({
       actorId: admin.id,
@@ -28,6 +34,7 @@ export async function POST(request: Request) {
         dutyPeriodId: change.duty_period_id,
         restoredAssigneeId: change.previous_assignee_id,
         restoredNextAssigneeId: change.previous_next_assignee_id,
+        scheduleRealignment,
       },
     });
 
