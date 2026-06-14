@@ -455,6 +455,18 @@ async function assertEmailAvailable(email: string, allowedUserId?: string) {
   }
 }
 
+function profileDisplayNameMetadata(
+  fullName: string,
+  existingMetadata: Record<string, unknown> = {},
+) {
+  return {
+    ...existingMetadata,
+    full_name: fullName,
+    name: fullName,
+    display_name: fullName,
+  };
+}
+
 export async function authenticateLocalProfile(email: string, password: string) {
   if (!isLocalBackend()) {
     return null;
@@ -533,9 +545,7 @@ export async function createProfile(params: {
       email: params.email,
       password: params.initialPassword,
       email_confirm: true,
-      user_metadata: {
-        full_name: params.fullName,
-      },
+      user_metadata: profileDisplayNameMetadata(params.fullName),
     });
     if (userError) throwDuplicateEmailConflict(userError);
     const userId = userData.user?.id;
@@ -664,12 +674,17 @@ export async function updateProfile(params: {
   if (!isLocalBackend()) {
     const supabase = getSupabaseForStore();
     if (email !== existing.email || params.fullName !== existing.full_name) {
+      const { data: authUserData, error: authUserError } =
+        await supabase.auth.admin.getUserById(params.userId);
+      if (authUserError) throw authUserError;
+
       const { error: userError } = await supabase.auth.admin.updateUserById(params.userId, {
         email,
         email_confirm: true,
-        user_metadata: {
-          full_name: params.fullName,
-        },
+        user_metadata: profileDisplayNameMetadata(
+          params.fullName,
+          authUserData.user?.user_metadata,
+        ),
       });
       if (userError) throwDuplicateEmailConflict(userError);
     }
