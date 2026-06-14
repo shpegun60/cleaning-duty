@@ -195,7 +195,7 @@ export function UserEditForm({
           </Button>
         ) : null}
       </div>
-      {scheduleLocked ? <ScheduleLockedNotice /> : null}
+      {scheduleLocked ? <UserIdentityAllowedScheduleLockedNotice /> : null}
       {message ? <p className="text-sm text-stone-700">{message}</p> : null}
     </form>
   );
@@ -543,6 +543,14 @@ function ScheduleLockedNotice() {
   return (
     <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
       Графік вже побудовано. Спочатку очисти весь графік у вкладці Графік, потім змінюй людей, кімнати, роботи або rotation order.
+    </p>
+  );
+}
+
+function UserIdentityAllowedScheduleLockedNotice() {
+  return (
+    <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      Графік вже побудовано. Email, ім&apos;я і пароль можна міняти; роль, active flag, rotation order і видалення користувача заблоковані до очищення графіка.
     </p>
   );
 }
