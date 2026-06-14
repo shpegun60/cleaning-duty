@@ -124,6 +124,16 @@ RESEND_API_KEY=your-resend-key-if-email-is-needed
 EMAIL_FROM=Cleaning Duty <noreply@your-domain.com>
 ```
 
+Where to get these values:
+
+- `NEXT_PUBLIC_SUPABASE_URL`: Supabase Dashboard -> Project Settings -> API -> Project URL.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`: Supabase Dashboard -> Project Settings -> API -> publishable/anon key.
+- `SUPABASE_SECRET_KEY`: Supabase Dashboard -> Project Settings -> API -> secret/service role key. Keep it server-side only.
+- `RESEND_API_KEY`: Resend Dashboard -> API Keys -> Create API key. Sending access is enough.
+- `EMAIL_FROM`: a sender address on a domain verified in Resend, for example `Cleaning Duty <noreply@your-domain.com>`.
+- `APP_URL`: the public Production URL from Vercel, for example `https://your-app.vercel.app` or your custom domain.
+- `CRON_SECRET`: any long random value that you create yourself and save in Vercel env vars.
+
 Before the first Vercel deploy, run every SQL file in `supabase/migrations` in filename order against your Supabase project. Migration `013_shared_files_storage_bucket.sql` creates the Storage bucket for uploaded files.
 
 Vercel Cron can call:

@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 import { Button } from "@/components/ui/button";
 
@@ -53,7 +53,7 @@ export function LoginForm({
 
       const email = String(form.get("email") ?? "");
       const password = String(form.get("password") ?? "");
-      const supabase = createClient(supabaseUrl, supabasePublishableKey);
+      const supabase = createBrowserClient(supabaseUrl, supabasePublishableKey);
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
