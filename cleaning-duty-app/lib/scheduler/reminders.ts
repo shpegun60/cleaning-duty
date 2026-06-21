@@ -82,7 +82,6 @@ export async function sendSundayHandoverReminderIfNeeded(
     .lte("week_start", localDate)
     .gte("week_end", localDate)
     .in("status", [
-      "active",
       "cleaning_done",
       "handover_pending",
       "rejected",
@@ -126,7 +125,7 @@ export async function sendSundayHandoverReminderIfNeeded(
     });
   }
 
-  if (period.status === "active" || period.status === "cleaning_done") {
+  if (period.status === "cleaning_done") {
     await supabase
       .from("duty_periods")
       .update({
